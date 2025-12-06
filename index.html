@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sketch2Story | Projects</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="home">
+  <div class="page">
+    <header class="hero home-hero">
+      <div>
+        <p class="eyebrow">Sketch2Story</p>
+        <h1>Storyboard projects</h1>
+        <p class="lede">Manage timelines locally. Open a project to sketch, convert, and keep panels in sync.</p>
+      </div>
+    </header>
+
+    <div class="home-bar">
+      <div class="home-bar-left">
+        <button class="primary" id="newProjectBtn">New project</button>
+      </div>
+    </div>
+
+    <main>
+      <section class="project-section">
+        <div class="section-head">
+          <div>
+            <h2>Your timelines</h2>
+          </div>
+        </div>
+        <div id="projectsGrid" class="project-grid">
+          <p class="empty-copy">No projects yet. Create one to start sketching.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" data-new-project-modal>
+    <div class="modal__dialog">
+      <h3>Create project</h3>
+      <div class="field">
+        <label>
+          <span>Project name</span>
+          <input id="newProjectName" type="text" placeholder="Project title">
+        </label>
+      </div>
+      <div class="modal__actions">
+        <button type="button" class="secondary" data-new-project-cancel>Cancel</button>
+        <button type="button" class="primary" data-new-project-save>Create</button>
+      </div>
+    </div>
+  </div>
+  <script src="home.js"></script>
+</body>
+</html>
