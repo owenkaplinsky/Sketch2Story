@@ -36,7 +36,7 @@ const editInput = document.querySelector("[data-edit-input]");
 const editCancel = document.querySelector("[data-edit-cancel]");
 const editSubmit = document.querySelector("[data-edit-submit]");
 
-const colorChoices = ["#121826", "#0f9ed5", "#eb5757", "#35a05c", "#7a7f8c", "#f2c94c"];
+const DEFAULT_COLOR = "#3c7ecf";
 const OPENAI_MODEL = "gpt-5.1";
 const PROJECT_ID = new URLSearchParams(window.location.search).get("project") || "default";
 let aspect = localStorage.getItem("aspectChoice") || "16:9";
@@ -247,15 +247,27 @@ function addPanelCard(panel, index, total) {
              </div>`
           : `<div class="canvas-wrap">
               <div class="toolbar">
-                <div class="swatches">
-                  ${colorChoices
-                    .map(
-                      (color, index) =>
-                        `<button type="button" class="color-swatch" data-color="${color}" aria-label="Use ${color}" style="background:${color};${
-                          index === 0 ? "box-shadow: 0 0 0 2px #fff, 0 0 0 3px " + color : ""
-                        }"></button>`
-                    )
-                    .join("")}
+                <div class="color-picker-wrapper">
+                  <button type="button" class="color-swatch" data-color-toggle style="background:${DEFAULT_COLOR};" aria-label="Open color picker"></button>
+                  <div class="color-picker-popup" data-color-popup style="display: none;">
+                    <div class="color-picker-controls">
+                      <div class="color-slider">
+                        <label>H</label>
+                        <input type="range" min="0" max="360" value="208" data-hue class="color-slider-input">
+                        <span data-hue-value>208</span>°
+                      </div>
+                      <div class="color-slider">
+                        <label>S</label>
+                        <input type="range" min="0" max="100" value="81" data-saturation class="color-slider-input">
+                        <span data-saturation-value>81</span>%
+                      </div>
+                      <div class="color-slider">
+                        <label>L</label>
+                        <input type="range" min="0" max="100" value="57" data-lightness class="color-slider-input">
+                        <span data-lightness-value>57</span>%
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <label class="brush-range">
                   Brush
@@ -358,8 +370,11 @@ function renumberPanels() {
 function setupCanvas(canvas, card, panel) {
   const ctx = canvas.getContext("2d");
   const state = {
-    color: colorChoices[0],
+    color: DEFAULT_COLOR,
     brush: 4,
+    h: 208,
+    s: 81,
+    l: 57,
   };
 
   resizeCanvas(canvas, ctx, state);
@@ -378,14 +393,56 @@ function setupCanvas(canvas, card, panel) {
     });
   }
 
-  const swatches = card.querySelectorAll(".color-swatch");
-  swatches.forEach((button) => {
-    button.addEventListener("click", () => {
-      swatches.forEach((b) => (b.style.boxShadow = ""));
-      state.color = button.dataset.color || colorChoices[0];
-      ctx.strokeStyle = state.color;
-      button.style.boxShadow = `0 0 0 2px #fff, 0 0 0 3px ${ctx.strokeStyle}`;
+  const colorToggle = card.querySelector("[data-color-toggle]");
+  const colorPopup = card.querySelector("[data-color-popup]");
+  const hueInput = card.querySelector("[data-hue]");
+  const saturationInput = card.querySelector("[data-saturation]");
+  const lightnessInput = card.querySelector("[data-lightness]");
+  const hueValue = card.querySelector("[data-hue-value]");
+  const saturationValue = card.querySelector("[data-saturation-value]");
+  const lightnessValue = card.querySelector("[data-lightness-value]");
+
+  const updateColorFromHSL = () => {
+    state.color = `hsl(${state.h}, ${state.s}%, ${state.l}%)`;
+    ctx.strokeStyle = state.color;
+    if (colorToggle) colorToggle.style.background = state.color;
+  };
+
+  if (colorToggle) {
+    colorToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      colorPopup.style.display = colorPopup.style.display === "none" ? "block" : "none";
     });
+  }
+
+  if (hueInput) {
+    hueInput.addEventListener("input", (event) => {
+      state.h = Number(event.target.value);
+      if (hueValue) hueValue.textContent = state.h.toString();
+      updateColorFromHSL();
+    });
+  }
+
+  if (saturationInput) {
+    saturationInput.addEventListener("input", (event) => {
+      state.s = Number(event.target.value);
+      if (saturationValue) saturationValue.textContent = state.s.toString();
+      updateColorFromHSL();
+    });
+  }
+
+  if (lightnessInput) {
+    lightnessInput.addEventListener("input", (event) => {
+      state.l = Number(event.target.value);
+      if (lightnessValue) lightnessValue.textContent = state.l.toString();
+      updateColorFromHSL();
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    if (!card.contains(event.target) && colorPopup) {
+      colorPopup.style.display = "none";
+    }
   });
 
   const clearButton = card.querySelector("[data-clear]");
