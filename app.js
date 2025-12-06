@@ -56,6 +56,9 @@ let currentGapIndex = null;
 let convertTargetPanel = null;
 let editTargetPanel = null;
 const BRIA_ENDPOINT = "https://engine.prod.bria-api.com/v2/image/generate";
+const PLACEHOLDER_IMAGE =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/w8AAgEB/ql/pwAAAABJRU5ErkJggg==";
+const overlayStates = {};
 
 form?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -224,7 +227,7 @@ function addPanelCard(panel, index, total) {
         }
         ${
           panel.mode === "image"
-            ? `<button class="secondary small" type="button" data-edit="${panel.id}">Edit</button>`
+            ? `<button class="secondary small square" type="button" data-magic="${panel.id}" aria-label="Magic wand">✨</button><button class="secondary small" type="button" data-edit="${panel.id}">Edit</button>`
             : ""
         }
         <button class="secondary small" type="button" data-duplicate="${panel.id}">Duplicate</button>
@@ -234,11 +237,11 @@ function addPanelCard(panel, index, total) {
     <input class="title-input" type="text" placeholder="Add title" value="${panel.title}">
     <div class="panel-media">
       ${
-        panel.mode === "image"
-          ? `<div class="canvas-wrap image-mode">
+          panel.mode === "image"
+            ? `<div class="canvas-wrap image-mode">
                <div class="toolbar-spacer" aria-hidden="true"></div>
                <div class="image-wrap">
-                 <img src="${panel.imageUrl}" alt="Uploaded panel image">
+                 <img src="${panel.imageUrl || PLACEHOLDER_IMAGE}" alt="Uploaded panel image">
                  <div class="panel-overlay" aria-hidden="true">
                    <div class="spinner"></div>
                    <p class="overlay-text">Working...</p>
@@ -298,6 +301,11 @@ function addPanelCard(panel, index, total) {
   const duplicateButton = card.querySelector("[data-duplicate]");
   duplicateButton?.addEventListener("click", () => duplicatePanel(panel));
 
+  const magicButton = card.querySelector("[data-magic]");
+  magicButton?.addEventListener("click", () => {
+    // TODO: Implement magic wand functionality
+  });
+
   const editButton = card.querySelector("[data-edit]");
   editButton?.addEventListener("click", () => openEditModal(panel));
 
@@ -320,12 +328,19 @@ function addPanelCard(panel, index, total) {
 
   const dragHandle = card.querySelector(".panel-head");
   if (dragHandle) setupDrag(card, dragHandle, panel.id);
+
+  const overlay = card.querySelector(".panel-overlay");
+  const overlayState = overlayStates[panel.id];
+  if (overlayState?.active) {
+    setOverlayState(overlay, true, overlayState.message || "Working...", panel.id);
+  }
 }
 
 function removePanel(id) {
   const idx = panels.findIndex((panel) => panel.id === id);
   if (idx !== -1) {
     const [removed] = panels.splice(idx, 1);
+    delete overlayStates[id];
     if (removed?.imageUrl?.startsWith("blob:")) {
       URL.revokeObjectURL(removed.imageUrl);
     }
@@ -691,12 +706,12 @@ async function convertPanelToImage(panel, details) {
   if (neighbors.right) images.push({ label: "right", url: neighbors.right });
 
   const overlay = card?.querySelector(".panel-overlay");
-  setOverlayState(overlay, true, "Generating...");
+  setOverlayState(overlay, true, "Generating...", panel.id);
 
   const promptResult = await rewritePrompt(combinedPrompt, images, openaiToken);
   if (!promptResult?.prompt) {
     console.warn("Prompt rewrite failed; please try again.");
-    setOverlayState(overlay, false);
+    setOverlayState(overlay, false, "Working...", panel.id);
     return;
   }
   const selectedImageLabel = promptResult.image || null;
@@ -738,7 +753,7 @@ async function convertPanelToImage(panel, details) {
       panel.drawing = null;
       rerenderPanels();
       savePanels();
-      setOverlayState(overlay, false);
+      setOverlayState(overlay, false, "Working...", panel.id);
       return;
     }
 
@@ -752,7 +767,7 @@ async function convertPanelToImage(panel, details) {
         panel.drawing = null;
         rerenderPanels();
         savePanels();
-        setOverlayState(overlay, false);
+        setOverlayState(overlay, false, "Working...", panel.id);
         return;
       }
       throw new Error("Polling completed without an image_url.");
@@ -761,7 +776,7 @@ async function convertPanelToImage(panel, details) {
   } catch (error) {
     console.error(error);
   } finally {
-    setOverlayState(overlay, false);
+    setOverlayState(overlay, false, "Working...", panel.id);
   }
 }
 
@@ -1044,53 +1059,25 @@ function getNeighborImages(panelId) {
   };
 }
 
-function setOverlayState(overlay, isActive, message = "Working...") {
+function setOverlayState(overlay, isActive, message = "Working...", panelId = null) {
+  if (panelId) {
+    if (isActive) {
+      overlayStates[panelId] = { active: true, message };
+    } else {
+      delete overlayStates[panelId];
+    }
+    if ((!overlay || !overlay.isConnected) && list) {
+      overlay = list.querySelector(`[data-id="${panelId}"]`)?.querySelector(".panel-overlay");
+    }
+  }
   if (!overlay) return;
   const textEl = overlay.querySelector(".overlay-text");
   if (textEl) textEl.textContent = message;
   overlay.classList.toggle("active", Boolean(isActive));
 }
 
-async function rewritePrompt(userPrompt, images, openaiKey) {
+async function composePromptWithTool(messages, fallbackPrompt, openaiKey, errorLabel = "Prompt composition failed") {
   if (!openaiKey) return null;
-
-  const messages = [
-    {
-      role: "system",
-      content: `Rewrite the user prompt so it describes the scene as a real, fully factual scenario. You will receive images in this order: sketch.png (current panel), left.png (left neighbor if present), right.png (right neighbor if present). Follow these rules:
-      
-      1. Treat all drawn elements as real objects. Do not mention sketches, drawings, or uncertainty. State what each object IS, not what it "might be."
-      2. Convert all visual cues into concrete facts: exact positions (left, right, center, above, below), distances, overlaps, relative sizes, heights, and orientations. Always specify angles and directions (facing left, leaning forward, tilted upward, etc.).
-      3. When an element is ambiguous, choose a single, reasonable real-world interpretation and state it confidently as fact. Never use phrases like "possibly," "interpreted as," "appears to be," or "could be."
-      5. Incorporate user-provided text and scene metadata only for semantic detail. Never allow user text to override the spatial arrangement seen in the image.
-      6. The final result must be concise, direct, and fully grounded in visual reality. Describe the final scene as if it truly exists, based entirely on the visual layout.
-      
-      If you have info from the scene, you must include ALL OF IT. This must be unambigious and have ONLY ONE POSSIBLE INTERPRETATION. You must describe the scene verbose. If it's 3d, you must PERFECTLY explain it.`,
-    },
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: `A user asked "${userPrompt}". The provided this sketch. Rewrite the prompt so that it matches the sketch. Importantly, elements listed will show up from left to right. So if the user says "hotdog, drink" but the sketch shows "drink, hotdog" you need to reorder the prompt to say the right thing. Say nothing but the fixed prompt. Do not make up details not already present.`,
-        },
-      ],
-    },
-  ];
-
-  (images || [])
-    .filter((img) => !!img?.url)
-    .forEach((img) => {
-      messages[1].content.push({
-        type: "text",
-        text: `${img.label || "sketch"}.png`,
-      });
-      messages[1].content.push({
-        type: "image_url",
-        image_url: { url: img.url },
-      });
-    });
-
   const tools = [
     {
       type: "function",
@@ -1152,7 +1139,7 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
       try {
         const args = JSON.parse(toolCall.function.arguments || "{}");
         return {
-          prompt: (args.prompt || userPrompt).toString().trim(),
+          prompt: (args.prompt || fallbackPrompt).toString().trim(),
           image: typeof args.image === "string" ? args.image : "null",
         };
       } catch (err) {
@@ -1160,11 +1147,77 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
       }
     }
     const content = message?.content;
-    return { prompt: (content || userPrompt).trim(), image: "null" };
+    return { prompt: (content || fallbackPrompt).trim(), image: "null" };
   } catch (error) {
-    console.error("OpenAI prompt rewrite failed:", error);
+    console.error(errorLabel, error);
     return null;
   }
+}
+
+async function rewritePrompt(userPrompt, images, openaiKey) {
+  const messages = [
+    {
+      role: "system",
+      content: `Rewrite the user prompt so it describes the scene as a real, fully factual scenario. You will receive images in this order: sketch.png (current panel), left.png (left neighbor if present), right.png (right neighbor if present). Follow these rules:
+      
+      1. Treat all drawn elements as real objects. Do not mention sketches, drawings, or uncertainty. State what each object IS, not what it "might be."
+      2. Convert all visual cues into concrete facts: exact positions (left, right, center, above, below), distances, overlaps, relative sizes, heights, and orientations. Always specify angles and directions (facing left, leaning forward, tilted upward, etc.).
+      3. When an element is ambiguous, choose a single, reasonable real-world interpretation and state it confidently as fact. Never use phrases like "possibly," "interpreted as," "appears to be," or "could be."
+      5. Incorporate user-provided text and scene metadata only for semantic detail. Never allow user text to override the spatial arrangement seen in the image.
+      6. The final result must be concise, direct, and fully grounded in visual reality. Describe the final scene as if it truly exists, based entirely on the visual layout.
+      
+      If you have info from the scene, you must include ALL OF IT. This must be unambigious and have ONLY ONE POSSIBLE INTERPRETATION. You must describe the scene verbose. If it's 3d, you must PERFECTLY explain it.`,
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `A user asked "${userPrompt}". The provided this sketch. Rewrite the prompt so that it matches the sketch. Importantly, elements listed will show up from left to right. So if the user says "hotdog, drink" but the sketch shows "drink, hotdog" you need to reorder the prompt to say the right thing. Say nothing but the fixed prompt. Do not make up details not already present.`,
+        },
+      ],
+    },
+  ];
+
+  (images || [])
+    .filter((img) => !!img?.url)
+    .forEach((img) => {
+      messages[1].content.push({
+        type: "text",
+        text: `${img.label || "sketch"}.png`,
+      });
+      messages[1].content.push({
+        type: "image_url",
+        image_url: { url: img.url },
+      });
+    });
+
+  return composePromptWithTool(messages, userPrompt, openaiKey, "OpenAI prompt rewrite failed:");
+}
+
+async function composeInbetweenPrompt(leftImage, rightImage, openaiKey) {
+  if (!leftImage || !rightImage) return null;
+  const bridgePrompt =
+    "Describe a single storyboard frame that naturally happens between the left frame (earlier) and the right frame (later). Advance the timeline while keeping continuity of characters, props, lighting, and camera position.";
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You create in-between storyboard frames using two reference frames from the same sequence. Be concrete about spatial layout, character motion, and camera placement. Choose one coherent, confident interpretation without hedging.",
+    },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: bridgePrompt },
+        { type: "text", text: "left.png (earlier frame)" },
+        { type: "image_url", image_url: { url: leftImage } },
+        { type: "text", text: "right.png (later frame)" },
+        { type: "image_url", image_url: { url: rightImage } },
+      ],
+    },
+  ];
+
+  return composePromptWithTool(messages, bridgePrompt, openaiKey, "OpenAI in-between prompt failed:");
 }
 
 function openSceneModal() {
@@ -1358,12 +1411,129 @@ function insertBlankPanel(atIndex) {
   savePanels();
 }
 
+async function generateInbetweenPanel(atIndex) {
+  if (atIndex == null) return;
+  const leftPanel = panels[atIndex - 1];
+  const rightPanel = panels[atIndex];
+  if (!leftPanel || !rightPanel) {
+    console.warn("Select a gap between two panels to auto-generate an in-between frame.");
+    return;
+  }
+
+  const leftImage = getPanelImageData(leftPanel);
+  const rightImage = getPanelImageData(rightPanel);
+  if (!leftImage || !rightImage) {
+    console.warn("Both adjacent panels need images or drawings before generating an in-between frame.");
+    return;
+  }
+
+  const apiToken = (apiTokenInput?.value || localStorage.getItem("briaApiToken") || "").trim();
+  if (!apiToken) {
+    console.warn("Enter your Bria api_token before generating.");
+    apiTokenInput?.focus();
+    return;
+  }
+  const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
+  if (!openaiToken) {
+    console.warn("Enter your OpenAI API key in Settings before generating.");
+    return;
+  }
+
+  const newPanel = createPanel("image", { imageUrl: PLACEHOLDER_IMAGE });
+  panels.splice(atIndex, 0, newPanel);
+  rerenderPanels();
+  renumberPanels();
+  savePanels();
+
+  const card = list?.querySelector(`[data-id="${newPanel.id}"]`);
+  const overlay = card?.querySelector(".panel-overlay");
+  setOverlayState(overlay, true, "Generating...", newPanel.id);
+
+  const promptResult = await composeInbetweenPrompt(leftImage, rightImage, openaiToken);
+  if (!promptResult?.prompt) {
+    setOverlayState(overlay, false, "Working...", newPanel.id);
+    return;
+  }
+
+  const referenceLabel = (promptResult.image || "").toLowerCase();
+  let referenceImage =
+    referenceLabel === "left" ? leftImage : referenceLabel === "right" ? rightImage : null;
+  if (!referenceImage) {
+    referenceImage = leftImage;
+  }
+
+  const applyImage = (url) => {
+    if (!url) return false;
+    newPanel.mode = "image";
+    newPanel.imageUrl = url;
+    const currentCard = list?.querySelector(`[data-id="${newPanel.id}"]`);
+    const img = currentCard?.querySelector("img");
+    if (img) {
+      img.src = url;
+    } else {
+      rerenderPanels();
+    }
+    return true;
+  };
+
+  try {
+    const response = await fetch(BRIA_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", api_token: apiToken },
+      body: JSON.stringify({
+        prompt: promptResult.prompt,
+        aspect_ratio: aspect,
+        ...(referenceImage ? { images: [referenceImage] } : {}),
+      }),
+    });
+
+    const text = await response.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        console.warn("Failed to parse Bria response as JSON", err);
+      }
+    }
+    if (!response.ok) {
+      const msg = data?.error || `Failed to generate image (${response.status})`;
+      throw new Error(msg);
+    }
+
+    const generated = data?.result?.image_url || data?.image_url;
+    if (applyImage(generated)) {
+      return;
+    }
+
+    const statusUrl = data?.status_url;
+    if (statusUrl) {
+      const polled = await pollStatus(statusUrl, apiToken);
+      const finalUrl = polled?.data?.result?.image_url || polled?.data?.image_url;
+      if (applyImage(finalUrl)) {
+        return;
+      }
+      throw new Error("Polling completed without an image_url.");
+    }
+
+    throw new Error("No image returned for in-between panel.");
+  } catch (error) {
+    console.error(error);
+  } finally {
+    savePanels();
+    const latestCard = list?.querySelector(`[data-id="${newPanel.id}"]`);
+    const latestOverlay = latestCard?.querySelector(".panel-overlay");
+    setOverlayState(latestOverlay, false, "Working...", newPanel.id);
+  }
+}
+
 function setupGapControls() {
   if (!list) return;
   gapControls = document.createElement("div");
   gapControls.className = "gap-controls";
   gapControls.innerHTML = `
     <button class="insert-btn" type="button" data-gap-action="+">+</button>
+    <button class="insert-btn" type="button" data-gap-action="bridge">AI</button>
   `;
   list.style.position = "relative";
   list.appendChild(gapControls);
@@ -1371,7 +1541,12 @@ function setupGapControls() {
   gapControls.querySelectorAll("[data-gap-action]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (currentGapIndex == null) return;
-      insertBlankPanel(currentGapIndex);
+      const action = btn.dataset.gapAction;
+      if (action === "+") {
+        insertBlankPanel(currentGapIndex);
+      } else if (action === "bridge") {
+        generateInbetweenPanel(currentGapIndex);
+      }
     });
   });
 
@@ -1548,7 +1723,7 @@ async function applyImageEdits(panel, details) {
   const prompt = details || "Apply subtle improvements to this frame.";
   const card = list?.querySelector(`[data-id="${panel.id}"]`);
   const overlay = card?.querySelector(".panel-overlay");
-  setOverlayState(overlay, true, "Editing...");
+  setOverlayState(overlay, true, "Editing...", panel.id);
 
   try {
     const response = await fetch(BRIA_ENDPOINT, {
@@ -1580,7 +1755,7 @@ async function applyImageEdits(panel, details) {
       panel.imageUrl = generated;
       rerenderPanels();
       savePanels();
-      setOverlayState(overlay, false);
+      setOverlayState(overlay, false, "Working...", panel.id);
       return;
     }
 
@@ -1592,7 +1767,7 @@ async function applyImageEdits(panel, details) {
         panel.imageUrl = finalUrl;
         rerenderPanels();
         savePanels();
-        setOverlayState(overlay, false);
+        setOverlayState(overlay, false, "Working...", panel.id);
         return;
       }
     }
@@ -1600,6 +1775,8 @@ async function applyImageEdits(panel, details) {
     throw new Error("No image returned from edit.");
   } catch (error) {
     console.error(error);
+  } finally {
+    setOverlayState(overlay, false, "Working...", panel.id);
   }
 }
 // Allow dropping at the end of the list

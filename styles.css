@@ -509,6 +509,12 @@ body {
   font-weight: 600;
 }
 
+.secondary.small.square {
+  padding: 7px;
+  min-width: 32px;
+  text-align: center;
+}
+
 .panel-head h3 {
   margin: 0;
   letter-spacing: -0.2px;
