@@ -31,6 +31,10 @@ const convertSceneSelect = document.getElementById("convertSceneSelect");
 const projectTitleEl = document.getElementById("projectTitle");
 const exportVideoBtn = document.getElementById("exportVideoBtn");
 const exportOutput = document.getElementById("exportOutput");
+const editModal = document.querySelector("[data-edit-modal]");
+const editInput = document.querySelector("[data-edit-input]");
+const editCancel = document.querySelector("[data-edit-cancel]");
+const editSubmit = document.querySelector("[data-edit-submit]");
 
 const colorChoices = ["#121826", "#0f9ed5", "#eb5757", "#35a05c", "#7a7f8c", "#f2c94c"];
 const OPENAI_MODEL = "gpt-5.1";
@@ -50,6 +54,7 @@ let dragState = {
 let gapControls = null;
 let currentGapIndex = null;
 let convertTargetPanel = null;
+let editTargetPanel = null;
 const BRIA_ENDPOINT = "https://engine.prod.bria-api.com/v2/image/generate";
 
 form?.addEventListener("submit", (event) => {
@@ -85,8 +90,9 @@ modalCancel?.addEventListener("click", closeModal);
 modalSubmit?.addEventListener("click", async () => {
   if (!convertTargetPanel) return;
   const details = modalInput.value.trim();
-  await convertPanelToImage(convertTargetPanel, details);
+  const target = convertTargetPanel;
   closeModal();
+  await convertPanelToImage(target, details);
 });
 
 document.addEventListener("keydown", (event) => {
@@ -134,6 +140,18 @@ sceneModalTrigger?.addEventListener("click", () => openSceneModal());
 sceneModalCancel?.addEventListener("click", () => closeSceneModal());
 sceneModal?.addEventListener("click", (event) => {
   if (event.target === sceneModal) closeSceneModal();
+});
+
+editCancel?.addEventListener("click", () => closeEditModal());
+editModal?.addEventListener("click", (event) => {
+  if (event.target === editModal) closeEditModal();
+});
+editSubmit?.addEventListener("click", async () => {
+  const details = editInput?.value?.trim() || "";
+  if (!editTargetPanel) return;
+  const target = editTargetPanel;
+  closeEditModal();
+  await applyImageEdits(target, details);
 });
 
 sceneForm?.addEventListener("submit", (event) => {
@@ -204,38 +222,58 @@ function addPanelCard(panel, index, total) {
             ? `<button class="secondary small" type="button" data-convert="${panel.id}">Convert to Image</button>`
             : ""
         }
+        ${
+          panel.mode === "image"
+            ? `<button class="secondary small" type="button" data-edit="${panel.id}">Edit</button>`
+            : ""
+        }
+        <button class="secondary small" type="button" data-duplicate="${panel.id}">Duplicate</button>
         <button class="remove" type="button" data-remove="${panel.id}">Remove</button>
       </div>
     </div>
     <input class="title-input" type="text" placeholder="Add title" value="${panel.title}">
-    ${
-      panel.mode === "image"
-        ? `<div class="canvas-wrap image-mode">
-             <div class="toolbar-spacer" aria-hidden="true"></div>
-             <div class="image-wrap"><img src="${panel.imageUrl}" alt="Uploaded panel image"></div>
-           </div>`
-        : `<div class="canvas-wrap">
-            <div class="toolbar">
-              <div class="swatches">
-                ${colorChoices
-                  .map(
-                    (color, index) =>
-                      `<button type="button" class="color-swatch" data-color="${color}" aria-label="Use ${color}" style="background:${color};${
-                        index === 0 ? "box-shadow: 0 0 0 2px #fff, 0 0 0 3px " + color : ""
-                      }"></button>`
-                  )
-                  .join("")}
+    <div class="panel-media">
+      ${
+        panel.mode === "image"
+          ? `<div class="canvas-wrap image-mode">
+               <div class="toolbar-spacer" aria-hidden="true"></div>
+               <div class="image-wrap">
+                 <img src="${panel.imageUrl}" alt="Uploaded panel image">
+                 <div class="panel-overlay" aria-hidden="true">
+                   <div class="spinner"></div>
+                   <p class="overlay-text">Working...</p>
+                 </div>
+               </div>
+             </div>`
+          : `<div class="canvas-wrap">
+              <div class="toolbar">
+                <div class="swatches">
+                  ${colorChoices
+                    .map(
+                      (color, index) =>
+                        `<button type="button" class="color-swatch" data-color="${color}" aria-label="Use ${color}" style="background:${color};${
+                          index === 0 ? "box-shadow: 0 0 0 2px #fff, 0 0 0 3px " + color : ""
+                        }"></button>`
+                    )
+                    .join("")}
+                </div>
+                <label class="brush-range">
+                  Brush
+                  <input type="range" min="2" max="16" value="4" data-brush>
+                  <span data-brush-value>4</span>px
+                </label>
+                <button class="clear" type="button" data-clear>Clear</button>
               </div>
-              <label class="brush-range">
-                Brush
-                <input type="range" min="2" max="16" value="4" data-brush>
-                <span data-brush-value>4</span>px
-              </label>
-              <button class="clear" type="button" data-clear>Clear</button>
-            </div>
-            <canvas></canvas>
-          </div>`
-    }
+              <div class="draw-frame">
+                <canvas></canvas>
+                <div class="panel-overlay" aria-hidden="true">
+                  <div class="spinner"></div>
+                  <p class="overlay-text">Working...</p>
+                </div>
+              </div>
+            </div>`
+      }
+    </div>
     <textarea class="notes-input" placeholder="Notes, beats, or camera cues">${panel.notes}</textarea>
   `;
 
@@ -244,6 +282,12 @@ function addPanelCard(panel, index, total) {
 
   const convertButton = card.querySelector("[data-convert]");
   convertButton?.addEventListener("click", () => openModal(panel));
+
+  const duplicateButton = card.querySelector("[data-duplicate]");
+  duplicateButton?.addEventListener("click", () => duplicatePanel(panel));
+
+  const editButton = card.querySelector("[data-edit]");
+  editButton?.addEventListener("click", () => openEditModal(panel));
 
   const titleInput = card.querySelector(".title-input");
   titleInput?.addEventListener("input", (event) => {
@@ -284,6 +328,21 @@ function removePanel(id) {
     list.classList.add("empty-state");
     list.innerHTML = `<p class="empty-copy">No panels yet. Add one to start sketching.</p>`;
   }
+}
+
+function duplicatePanel(panel) {
+  if (!panel) return;
+  const idx = panels.findIndex((p) => p.id === panel.id);
+  const clone = {
+    ...panel,
+    id: crypto.randomUUID ? crypto.randomUUID() : `panel-${Date.now()}`,
+    drawing: panel.mode === "draw" ? panel.drawing : null,
+    imageUrl: panel.mode === "image" ? panel.imageUrl : null,
+  };
+  panels.splice(idx + 1, 0, clone);
+  rerenderPanels();
+  renumberPanels();
+  savePanels();
 }
 
 function renumberPanels() {
@@ -540,26 +599,26 @@ async function convertPanelToImage(panel, details) {
   const card = list?.querySelector(`[data-id="${panel.id}"]`);
   const canvas = card?.querySelector("canvas");
   if (!canvas) {
-    alert("No sketch found to convert.");
+    console.warn("No sketch found to convert.");
     return;
   }
 
   const apiToken = (apiTokenInput?.value || localStorage.getItem("briaApiToken") || "").trim();
   if (!apiToken) {
-    alert("Enter your Bria api_token before converting.");
+    console.warn("Enter your Bria api_token before converting.");
     apiTokenInput?.focus();
     return;
   }
   const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
   if (!openaiToken) {
-    alert("Enter your OpenAI API key in Settings before converting.");
+    console.warn("Enter your OpenAI API key in Settings before converting.");
     return;
   }
 
   const dataUrl = canvas.toDataURL("image/png");
   const sceneId = convertSceneSelect?.value || "";
   if (!sceneId) {
-    alert("Select a scene before generating.");
+    console.warn("Select a scene before generating.");
     return;
   }
   const scene = scenes.find((s) => s.id === sceneId);
@@ -574,9 +633,13 @@ async function convertPanelToImage(panel, details) {
   if (neighbors.left) images.push({ label: "left", url: neighbors.left });
   if (neighbors.right) images.push({ label: "right", url: neighbors.right });
 
+  const overlay = card?.querySelector(".panel-overlay");
+  setOverlayState(overlay, true, "Generating...");
+
   const promptResult = await rewritePrompt(combinedPrompt, images, openaiToken);
   if (!promptResult?.prompt) {
-    alert("Prompt rewrite failed; please try again.");
+    console.warn("Prompt rewrite failed; please try again.");
+    setOverlayState(overlay, false);
     return;
   }
   const selectedImageLabel = promptResult.image || null;
@@ -585,8 +648,6 @@ async function convertPanelToImage(panel, details) {
   if (selectedImageLabel === "right") selectedImageData = neighbors.right;
 
   const finalPrompt = promptResult.prompt;
-  const chosenImage = promptResult.image || "null";
-  alert(`RESPONSE\n\n---\n\n${finalPrompt}\n\n(image: ${chosenImage})`);
 
   try {
     const response = await fetch(BRIA_ENDPOINT, {
@@ -620,7 +681,7 @@ async function convertPanelToImage(panel, details) {
       panel.drawing = null;
       rerenderPanels();
       savePanels();
-      alert(`RESPONSE\n\n---\n\n${text || ""}`);
+      setOverlayState(overlay, false);
       return;
     }
 
@@ -634,19 +695,16 @@ async function convertPanelToImage(panel, details) {
         panel.drawing = null;
         rerenderPanels();
         savePanels();
-        alert(`RESPONSE\n\n---\n\n${polled.text || ""}`);
+        setOverlayState(overlay, false);
         return;
       }
-      alert(`RESPONSE\n\n---\n\n${polled.text || ""}`);
       throw new Error("Polling completed without an image_url.");
     }
 
-  alert(`RESPONSE\n\n---\n\n${text || ""}`);
   } catch (error) {
     console.error(error);
-    alert(
-      `${error.message || "Conversion failed."}\nVerify your api_token, network access, and try again.`
-    );
+  } finally {
+    setOverlayState(overlay, false);
   }
 }
 
@@ -929,6 +987,13 @@ function getNeighborImages(panelId) {
   };
 }
 
+function setOverlayState(overlay, isActive, message = "Working...") {
+  if (!overlay) return;
+  const textEl = overlay.querySelector(".overlay-text");
+  if (textEl) textEl.textContent = message;
+  overlay.classList.toggle("active", Boolean(isActive));
+}
+
 async function rewritePrompt(userPrompt, images, openaiKey) {
   if (!openaiKey) return null;
 
@@ -1054,6 +1119,19 @@ function openSceneModal() {
 
 function closeSceneModal() {
   sceneModal?.classList.remove("active");
+}
+
+function openEditModal(panel) {
+  editTargetPanel = panel;
+  if (editInput) editInput.value = "";
+  editModal?.classList.add("active");
+  editInput?.focus();
+}
+
+function closeEditModal() {
+  editTargetPanel = null;
+  editModal?.classList.remove("active");
+  if (editInput) editInput.value = "";
 }
 
 function activateTab(name) {
@@ -1229,7 +1307,6 @@ function setupGapControls() {
   gapControls.className = "gap-controls";
   gapControls.innerHTML = `
     <button class="insert-btn" type="button" data-gap-action="+">+</button>
-    <button class="insert-btn" type="button" data-gap-action="loop">🔁</button>
   `;
   list.style.position = "relative";
   list.appendChild(gapControls);
@@ -1397,6 +1474,76 @@ function closeModal() {
   modal?.classList.remove("active");
   convertTargetPanel = null;
   modalInput.value = "";
+}
+
+async function applyImageEdits(panel, details) {
+  if (!panel || panel.mode !== "image" || !panel.imageUrl) {
+    console.warn("Edits are only available for image panels.");
+    return;
+  }
+  const apiToken = (apiTokenInput?.value || localStorage.getItem("briaApiToken") || "").trim();
+  if (!apiToken) {
+    console.warn("Enter your Bria api_token before editing.");
+    apiTokenInput?.focus();
+    return;
+  }
+
+  const prompt = details || "Apply subtle improvements to this frame.";
+  const card = list?.querySelector(`[data-id="${panel.id}"]`);
+  const overlay = card?.querySelector(".panel-overlay");
+  setOverlayState(overlay, true, "Editing...");
+
+  try {
+    const response = await fetch(BRIA_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", api_token: apiToken },
+      body: JSON.stringify({
+        prompt,
+        aspect_ratio: aspect,
+        images: [panel.imageUrl],
+      }),
+    });
+
+    const text = await response.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        console.warn("Failed to parse Bria response", err);
+      }
+    }
+    if (!response.ok) {
+      const msg = data?.error || `Failed to edit image (${response.status})`;
+      throw new Error(msg);
+    }
+
+    const generated = data?.result?.image_url || data?.image_url;
+    if (generated) {
+      panel.imageUrl = generated;
+      rerenderPanels();
+      savePanels();
+      setOverlayState(overlay, false);
+      return;
+    }
+
+    const statusUrl = data?.status_url;
+    if (statusUrl) {
+      const polled = await pollStatus(statusUrl, apiToken);
+      const finalUrl = polled?.data?.result?.image_url || polled?.data?.image_url;
+      if (finalUrl) {
+        panel.imageUrl = finalUrl;
+        rerenderPanels();
+        savePanels();
+        setOverlayState(overlay, false);
+        return;
+      }
+    }
+
+    throw new Error("No image returned from edit.");
+  } catch (error) {
+    console.error(error);
+  }
 }
 // Allow dropping at the end of the list
 list?.addEventListener("dragover", (event) => {

@@ -402,6 +402,66 @@ body {
   position: relative;
 }
 
+.panel-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.panel-overlay.active {
+  display: flex;
+}
+
+.panel-media {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.panel-media .canvas-wrap,
+.panel-media .image-wrap {
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+
+.draw-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.draw-frame canvas {
+  display: block;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.overlay-text {
+  margin: 0;
+  color: #fff;
+  font-weight: 700;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .panel-card.dragging {
   opacity: 0.9;
   box-shadow: 0 20px 40px -18px rgba(10, 18, 40, 0.45);
