@@ -29,6 +29,8 @@ const sceneModalCancel = document.querySelector("[data-scene-cancel]");
 const sceneModalSave = document.querySelector("[data-scene-save]");
 const convertSceneSelect = document.getElementById("convertSceneSelect");
 const projectTitleEl = document.getElementById("projectTitle");
+const exportVideoBtn = document.getElementById("exportVideoBtn");
+const exportOutput = document.getElementById("exportOutput");
 
 const colorChoices = ["#121826", "#0f9ed5", "#eb5757", "#35a05c", "#7a7f8c", "#f2c94c"];
 const OPENAI_MODEL = "gpt-5.1";
@@ -145,6 +147,8 @@ sceneForm?.addEventListener("submit", (event) => {
   sceneForm.reset();
   closeSceneModal();
 });
+
+exportVideoBtn?.addEventListener("click", () => exportPanelsToVideo());
 
 function populateSettingsModal() {
   const savedAspect = localStorage.getItem("aspectChoice") || aspect;
@@ -570,13 +574,19 @@ async function convertPanelToImage(panel, details) {
   if (neighbors.left) images.push({ label: "left", url: neighbors.left });
   if (neighbors.right) images.push({ label: "right", url: neighbors.right });
 
-  const prompt = await rewritePrompt(combinedPrompt, images, openaiToken);
-  if (!prompt) {
+  const promptResult = await rewritePrompt(combinedPrompt, images, openaiToken);
+  if (!promptResult?.prompt) {
     alert("Prompt rewrite failed; please try again.");
     return;
   }
-  const finalPrompt = prompt;
-  alert(`RESPONSE\n\n---\n\n${finalPrompt}`);
+  const selectedImageLabel = promptResult.image || null;
+  let selectedImageData = null;
+  if (selectedImageLabel === "left") selectedImageData = neighbors.left;
+  if (selectedImageLabel === "right") selectedImageData = neighbors.right;
+
+  const finalPrompt = promptResult.prompt;
+  const chosenImage = promptResult.image || "null";
+  alert(`RESPONSE\n\n---\n\n${finalPrompt}\n\n(image: ${chosenImage})`);
 
   try {
     const response = await fetch(BRIA_ENDPOINT, {
@@ -585,6 +595,7 @@ async function convertPanelToImage(panel, details) {
       body: JSON.stringify({
         prompt: finalPrompt,
         aspect_ratio: aspect,
+        ...(selectedImageData ? { images: [selectedImageData] } : {}),
       }),
     });
 
@@ -733,6 +744,173 @@ function setProjectTitle(title) {
   document.title = `Sketch2Story | ${title}`;
 }
 
+function exportPanelsToVideo() {
+  if (!panels.length) {
+    alert("Add at least one panel before exporting.");
+    return;
+  }
+  if (!exportOutput) return;
+
+  exportOutput.classList.remove("empty-state");
+  exportOutput.innerHTML = `<p class="empty-copy">Rendering video...</p>`;
+
+  const canvas = document.createElement("canvas");
+  const [w, h] = aspect.split(":").map(Number);
+  const baseWidth = 2560;
+  const baseHeight = Math.round((baseWidth / w) * h);
+  const dpr = Math.max(window.devicePixelRatio || 1, 1);
+  canvas.width = baseWidth * dpr;
+  canvas.height = baseHeight * dpr;
+  canvas.style.width = `${baseWidth}px`;
+  canvas.style.height = `${baseHeight}px`;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    exportOutput.innerHTML = `<p class="empty-copy">Canvas not supported.</p>`;
+    return;
+  }
+  ctx.scale(dpr, dpr);
+
+  if (typeof MediaRecorder === "undefined" || typeof canvas.captureStream !== "function") {
+    exportOutput.innerHTML = `<p class="empty-copy">Export failed. Media recording is not supported in this browser.</p>`;
+    return;
+  }
+
+  const fps = 30;
+  const stream = canvas.captureStream(fps);
+  const mimeCandidates = ["video/webm;codecs=vp8", "video/webm"];
+  const mimeType = mimeCandidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+  if (!mimeType) {
+    exportOutput.innerHTML = `<p class="empty-copy">Export failed. No supported WebM codec found.</p>`;
+    return;
+  }
+
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 8_000_000,
+    });
+  } catch (err) {
+    exportOutput.innerHTML = `<p class="empty-copy">Export failed. ${err.message || err}</p>`;
+    return;
+  }
+
+  const chunks = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+  const stopped = new Promise((resolve, reject) => {
+    recorder.addEventListener("stop", resolve, { once: true });
+    recorder.addEventListener("error", reject, { once: true });
+  });
+
+  const drawFrame = (img, title) => {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, baseWidth, baseHeight);
+    if (img) {
+      const scale = Math.min(baseWidth / img.width, baseHeight / img.height);
+      const dw = img.width * scale;
+      const dh = img.height * scale;
+      const dx = (baseWidth - dw) / 2;
+      const dy = (baseHeight - dh) / 2;
+      ctx.drawImage(img, dx, dy, dw, dh);
+    }
+    const label = title || "Untitled panel";
+    ctx.font = "30px Inter, Segoe UI, sans-serif";
+    ctx.textBaseline = "top";
+    const paddingX = 14;
+    const paddingY = 10;
+    const textMetrics = ctx.measureText(label);
+    const textHeight = textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent;
+    const bgWidth = textMetrics.width + paddingX * 2;
+    const bgHeight = textHeight + paddingY * 2;
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillRect(12, 12, bgWidth, bgHeight);
+    ctx.fillStyle = "#000";
+    ctx.fillText(label, 12 + paddingX, 12 + paddingY);
+    ctx.restore();
+  };
+
+  const loadImages = async () => {
+    const results = [];
+    for (const panel of panels) {
+      const url = getPanelImageData(panel);
+      if (!url) {
+        results.push(null);
+        continue;
+      }
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const p = new Promise((resolve) => {
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+      });
+      img.src = url;
+      results.push(await p);
+    }
+    return results;
+  };
+
+  const run = async () => {
+    const images = await loadImages();
+    recorder.start(1000);
+
+    // warmup to ensure recorder is active
+    await new Promise((r) => setTimeout(r, 300));
+
+    const frameDurationMs = 3000;
+    const step = 1000 / fps;
+
+    for (let i = 0; i < panels.length; i++) {
+      const targetTime = frameDurationMs;
+      for (let t = 0; t < targetTime; t += step) {
+        drawFrame(images[i], panels[i].title);
+        await new Promise((r) => setTimeout(r, step));
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 500)); // ensure last frame is captured
+    if (typeof recorder.requestData === "function") {
+      recorder.requestData();
+    }
+    recorder.stop();
+    await stopped;
+  };
+
+  run()
+    .then(() => {
+      if (!chunks.length) {
+        exportOutput.innerHTML = `<p class="empty-copy">Export failed. No video data was recorded.</p>`;
+        return;
+      }
+      const blob = new Blob(chunks, { type: mimeType || "video/webm" });
+      const url = URL.createObjectURL(blob);
+      exportOutput.innerHTML = "";
+      const video = document.createElement("video");
+      video.controls = true;
+      video.src = url;
+      video.playsInline = true;
+      exportOutput.appendChild(video);
+      const playPromise = video.play();
+      if (playPromise?.catch) {
+        playPromise.catch(() => {
+          const link = document.createElement("a");
+          link.href = url;
+          link.textContent = "Download video";
+          link.download = "export.webm";
+          exportOutput.appendChild(document.createElement("br"));
+          exportOutput.appendChild(link);
+        });
+      }
+    })
+    .catch((err) => {
+      console.error(err);
+      exportOutput.innerHTML = `<p class="empty-copy">Export failed. ${err.message || err}</p>`;
+    });
+}
+
 function getPanelImageData(panel) {
   if (!panel) return null;
   if (panel.mode === "image" && panel.imageUrl) return panel.imageUrl;
@@ -791,6 +969,30 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
       });
     });
 
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "compose_prompt",
+        description:
+          "Return the rewritten prompt and optionally choose a reference image to pass to image generation. Always call this tool.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "The final rewritten prompt text." },
+            image: {
+              type: "string",
+              enum: ["left", "right", "null"],
+              description:
+                "Select one reference image (left or right). If none should be used, return null.",
+            },
+          },
+          required: ["prompt", "image"],
+        },
+      },
+    },
+  ];
+
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -801,7 +1003,9 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
       body: JSON.stringify({
         model: OPENAI_MODEL,
         messages,
-        max_completion_tokens: 300,
+        tools,
+        tool_choice: "required",
+        max_completion_tokens: 500,
       }),
     });
 
@@ -820,8 +1024,21 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
       throw new Error(errMsg);
     }
 
-    const content = data?.choices?.[0]?.message?.content;
-    return (content || userPrompt).trim();
+    const message = data?.choices?.[0]?.message;
+    const toolCall = message?.tool_calls?.[0];
+    if (toolCall?.function?.name === "compose_prompt") {
+      try {
+        const args = JSON.parse(toolCall.function.arguments || "{}");
+        return {
+          prompt: (args.prompt || userPrompt).toString().trim(),
+          image: typeof args.image === "string" ? args.image : "null",
+        };
+      } catch (err) {
+        console.warn("Failed to parse tool arguments", err);
+      }
+    }
+    const content = message?.content;
+    return { prompt: (content || userPrompt).trim(), image: "null" };
   } catch (error) {
     console.error("OpenAI prompt rewrite failed:", error);
     return null;

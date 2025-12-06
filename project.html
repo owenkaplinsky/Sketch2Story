@@ -20,6 +20,7 @@
     <div class="tab-bar" role="tablist" aria-label="Project sections">
       <button class="tab active" type="button" role="tab" aria-selected="true" data-tab="panels">Panels</button>
       <button class="tab" type="button" role="tab" aria-selected="false" data-tab="scenes">Scenes</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-tab="export">Export</button>
     </div>
 
     <div class="tab-panels">
@@ -45,6 +46,22 @@
           </div>
           <div id="panels" class="panel-list empty-state">
             <p class="empty-copy">No panels yet. Add one to start sketching.</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-tab-panel="export" role="tabpanel" aria-hidden="true">
+        <section class="panel-controls export-controls">
+          <div class="actions">
+            <button type="button" class="primary" id="exportVideoBtn">Export to video</button>
+          </div>
+        </section>
+        <section class="timeline">
+          <div class="timeline-head">
+            <h2>Export</h2>
+          </div>
+          <div id="exportOutput" class="export-output empty-state">
+            <p class="empty-copy">No export yet. Click "Export to video" to render.</p>
           </div>
         </section>
       </div>

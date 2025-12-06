@@ -310,6 +310,20 @@ body {
   gap: 12px;
 }
 
+.export-output video {
+  width: 100%;
+  max-width: 960px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 28px -24px rgba(10, 18, 40, 0.35);
+}
+
+.export-output {
+  display: grid;
+  place-items: start;
+  gap: 12px;
+}
+
 .scene-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
