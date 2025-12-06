@@ -1,4 +1,6 @@
+const PROJECTS_KEY = "storyboardProjects";
 const panels = [];
+const scenes = [];
 
 const form = document.getElementById("panelForm");
 const list = document.getElementById("panels");
@@ -15,14 +17,27 @@ const settingsCancel = document.querySelector("[data-settings-cancel]");
 const settingsAspectInputs = document.querySelectorAll("input[name='settingsAspect']");
 const apiTokenInput = document.getElementById("apiTokenInput");
 const openaiTokenInput = document.getElementById("openaiTokenInput");
+const tabs = document.querySelectorAll("[data-tab]");
+const tabPanels = document.querySelectorAll("[data-tab-panel]");
+const sceneForm = document.getElementById("sceneForm");
+const sceneTitleInput = document.getElementById("sceneTitle");
+const sceneDescriptionInput = document.getElementById("sceneDescription");
+const scenesList = document.getElementById("scenesList");
+const sceneModal = document.querySelector("[data-scene-modal]");
+const sceneModalTrigger = document.getElementById("sceneModalTrigger");
+const sceneModalCancel = document.querySelector("[data-scene-cancel]");
+const sceneModalSave = document.querySelector("[data-scene-save]");
+const convertSceneSelect = document.getElementById("convertSceneSelect");
+const projectTitleEl = document.getElementById("projectTitle");
 
 const colorChoices = ["#121826", "#0f9ed5", "#eb5757", "#35a05c", "#7a7f8c", "#f2c94c"];
-const OPENAI_MODEL = "gpt-4o-mini";
+const OPENAI_MODEL = "gpt-5.1";
 const PROJECT_ID = new URLSearchParams(window.location.search).get("project") || "default";
 let aspect = localStorage.getItem("aspectChoice") || "16:9";
 document.body.dataset.aspect = aspect;
 document.documentElement.style.setProperty("--canvas-aspect", aspect.replace(":", " / "));
 const STORAGE_KEY = `storyboardPanels:${PROJECT_ID}`;
+const SCENE_STORAGE_KEY = `storyboardScenes:${PROJECT_ID}`;
 
 let dragState = {
   draggingId: null,
@@ -76,6 +91,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && modal?.classList.contains("active")) {
     closeModal();
   }
+  if (event.key === "Escape" && sceneModal?.classList.contains("active")) {
+    closeSceneModal();
+  }
 });
 
 settingsTrigger?.addEventListener("click", () => {
@@ -105,6 +123,29 @@ settingsSave?.addEventListener("click", () => {
   savePanels();
 });
 
+tabs.forEach((tab) => {
+  tab.addEventListener("click", () => activateTab(tab.dataset.tab || "panels"));
+});
+
+sceneModalTrigger?.addEventListener("click", () => openSceneModal());
+
+sceneModalCancel?.addEventListener("click", () => closeSceneModal());
+sceneModal?.addEventListener("click", (event) => {
+  if (event.target === sceneModal) closeSceneModal();
+});
+
+sceneForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const title = (sceneTitleInput?.value || "").trim();
+  const description = (sceneDescriptionInput?.value || "").trim();
+  const scene = createScene({ title, description });
+  scenes.push(scene);
+  renderScenes();
+  saveScenes();
+  sceneForm.reset();
+  closeSceneModal();
+});
+
 function populateSettingsModal() {
   const savedAspect = localStorage.getItem("aspectChoice") || aspect;
   settingsAspectInputs.forEach((input) => {
@@ -120,7 +161,13 @@ function populateSettingsModal() {
 
 populateSettingsModal();
 loadPanelsFromStorage();
+loadScenesFromStorage();
+refreshSceneSelect();
 setupGapControls();
+if (tabs.length) {
+  activateTab("panels");
+}
+initializeProjectTitle();
 
 function createPanel(mode, extras = {}) {
   return {
@@ -506,29 +553,42 @@ async function convertPanelToImage(panel, details) {
   }
 
   const dataUrl = canvas.toDataURL("image/png");
+  const sceneId = convertSceneSelect?.value || "";
+  if (!sceneId) {
+    alert("Select a scene before generating.");
+    return;
+  }
+  const scene = scenes.find((s) => s.id === sceneId);
+  const sceneContext = scene
+    ? `Scene title: ${scene.title || "Untitled scene"}; Description: ${scene.description || "No description provided."}`
+    : "";
   const userPrompt = details || "Generate a storyboard frame based on this layout.";
+  const combinedPrompt = sceneContext ? `${sceneContext}\n${userPrompt}` : userPrompt;
 
-  const prompt = await rewritePrompt(userPrompt, dataUrl, openaiToken);
+  const neighbors = getNeighborImages(panel.id);
+  const images = [{ label: "sketch", url: dataUrl }];
+  if (neighbors.left) images.push({ label: "left", url: neighbors.left });
+  if (neighbors.right) images.push({ label: "right", url: neighbors.right });
+
+  const prompt = await rewritePrompt(combinedPrompt, images, openaiToken);
   if (!prompt) {
     alert("Prompt rewrite failed; please try again.");
     return;
   }
-  console.log("Rewritten prompt:", prompt);
-  alert(`Using prompt:\n${prompt}`);
+  const finalPrompt = prompt;
+  alert(`RESPONSE\n\n---\n\n${finalPrompt}`);
 
   try {
     const response = await fetch(BRIA_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", api_token: apiToken },
       body: JSON.stringify({
-        prompt,
-        imageData: dataUrl,
+        prompt: finalPrompt,
         aspect_ratio: aspect,
       }),
     });
 
     const text = await response.text();
-    console.log("Bria raw response:", text);
     let data = {};
     if (text) {
       try {
@@ -549,25 +609,28 @@ async function convertPanelToImage(panel, details) {
       panel.drawing = null;
       rerenderPanels();
       savePanels();
+      alert(`RESPONSE\n\n---\n\n${text || ""}`);
       return;
     }
 
     const statusUrl = data?.status_url;
     if (statusUrl) {
       const polled = await pollStatus(statusUrl, apiToken);
-      const finalUrl = polled?.result?.image_url || polled?.image_url;
+      const finalUrl = polled?.data?.result?.image_url || polled?.data?.image_url;
       if (finalUrl) {
         panel.mode = "image";
         panel.imageUrl = finalUrl;
         panel.drawing = null;
         rerenderPanels();
         savePanels();
+        alert(`RESPONSE\n\n---\n\n${polled.text || ""}`);
         return;
       }
+      alert(`RESPONSE\n\n---\n\n${polled.text || ""}`);
       throw new Error("Polling completed without an image_url.");
     }
 
-  alert(`Generation returned no image. Raw response:\n${text || "[empty body]"}`);
+  alert(`RESPONSE\n\n---\n\n${text || ""}`);
   } catch (error) {
     console.error(error);
     alert(
@@ -596,7 +659,7 @@ async function pollStatus(statusUrl, apiToken, maxTries = 25, delayMs = 1200) {
       const state = data?.result?.state || data?.state;
       const imageUrl = data?.result?.image_url || data?.image_url;
 
-      if (imageUrl) return data;
+      if (imageUrl) return { data, text };
       if (state === "failed" || state === "error" || res.status >= 400) {
         throw new Error(`Status check failed (${res.status}): ${text}`);
       }
@@ -611,13 +674,98 @@ async function pollStatus(statusUrl, apiToken, maxTries = 25, delayMs = 1200) {
   throw new Error("Polling timed out without receiving an image.");
 }
 
-async function rewritePrompt(userPrompt, imageDataUrl, openaiKey) {
+function initializeProjectTitle() {
+  if (!projectTitleEl) return;
+  const { project } = getProjectMeta();
+  const title = project?.title?.trim() || "Untitled project";
+  setProjectTitle(title);
+
+  projectTitleEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      projectTitleEl.blur();
+    }
+  });
+
+  projectTitleEl.addEventListener("blur", () => {
+    const newTitle = (projectTitleEl.textContent || "").trim();
+    saveProjectTitle(newTitle || "Untitled project");
+  });
+}
+
+function getProjectMeta() {
+  let projects = [];
+  try {
+    projects = JSON.parse(localStorage.getItem(PROJECTS_KEY) || "[]");
+  } catch {
+    projects = [];
+  }
+  const project = projects.find((p) => p.id === PROJECT_ID) || null;
+  return { projects, project };
+}
+
+function saveProjectTitle(title) {
+  const cleanTitle = title?.trim() || "Untitled project";
+  let { projects, project } = getProjectMeta();
+
+  if (!project) {
+    project = { id: PROJECT_ID, title: cleanTitle, createdAt: Date.now() };
+    projects.push(project);
+  } else {
+    project.title = cleanTitle;
+  }
+
+  projects = projects.map((p) => (p.id === PROJECT_ID ? project : p));
+
+  try {
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  } catch (err) {
+    console.error("Failed to save project title", err);
+  }
+
+  setProjectTitle(cleanTitle);
+}
+
+function setProjectTitle(title) {
+  if (projectTitleEl) {
+    projectTitleEl.textContent = title;
+  }
+  document.title = `Sketch2Story | ${title}`;
+}
+
+function getPanelImageData(panel) {
+  if (!panel) return null;
+  if (panel.mode === "image" && panel.imageUrl) return panel.imageUrl;
+  if (panel.mode === "draw" && panel.drawing) return panel.drawing;
+  return null;
+}
+
+function getNeighborImages(panelId) {
+  const idx = panels.findIndex((p) => p.id === panelId);
+  if (idx === -1) return { left: null, right: null };
+  const leftPanel = panels[idx - 1];
+  const rightPanel = panels[idx + 1];
+  return {
+    left: getPanelImageData(leftPanel),
+    right: getPanelImageData(rightPanel),
+  };
+}
+
+async function rewritePrompt(userPrompt, images, openaiKey) {
   if (!openaiKey) return null;
 
   const messages = [
     {
       role: "system",
-      content: "You rewrite prompts to match a provided sketch. Return only the rewritten prompt; do not add new details.",
+      content: `Rewrite the user prompt so it describes the scene as a real, fully factual scenario. You will receive images in this order: sketch.png (current panel), left.png (left neighbor if present), right.png (right neighbor if present). Follow these rules:
+      
+      1. Treat all drawn elements as real objects. Do not mention sketches, drawings, or uncertainty. State what each object IS, not what it "might be."
+      2. Convert all visual cues into concrete facts: exact positions (left, right, center, above, below), distances, overlaps, relative sizes, heights, and orientations. Always specify angles and directions (facing left, leaning forward, tilted upward, etc.).
+      3. When an element is ambiguous, choose a single, reasonable real-world interpretation and state it confidently as fact. Never use phrases like "possibly," "interpreted as," "appears to be," or "could be."
+      5. Incorporate user-provided text and scene metadata only for semantic detail. Never allow user text to override the spatial arrangement seen in the image.
+      6. The final result must be concise, direct, and fully grounded in visual reality. Describe the final scene as if it truly exists, based entirely on the visual layout.
+      
+      If you have info from the scene, you must include ALL OF IT. This must be unambigious and have ONLY ONE POSSIBLE INTERPRETATION. You must describe the scene verbose. If it's 3d, you must PERFECTLY explain it.`,
     },
     {
       role: "user",
@@ -626,13 +774,22 @@ async function rewritePrompt(userPrompt, imageDataUrl, openaiKey) {
           type: "text",
           text: `A user asked "${userPrompt}". The provided this sketch. Rewrite the prompt so that it matches the sketch. Importantly, elements listed will show up from left to right. So if the user says "hotdog, drink" but the sketch shows "drink, hotdog" you need to reorder the prompt to say the right thing. Say nothing but the fixed prompt. Do not make up details not already present.`,
         },
-        {
-          type: "image_url",
-          image_url: { url: imageDataUrl },
-        },
       ],
     },
   ];
+
+  (images || [])
+    .filter((img) => !!img?.url)
+    .forEach((img) => {
+      messages[1].content.push({
+        type: "text",
+        text: `${img.label || "sketch"}.png`,
+      });
+      messages[1].content.push({
+        type: "image_url",
+        image_url: { url: img.url },
+      });
+    });
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -644,7 +801,7 @@ async function rewritePrompt(userPrompt, imageDataUrl, openaiKey) {
       body: JSON.stringify({
         model: OPENAI_MODEL,
         messages,
-        max_tokens: 300,
+        max_completion_tokens: 300,
       }),
     });
 
@@ -668,6 +825,149 @@ async function rewritePrompt(userPrompt, imageDataUrl, openaiKey) {
   } catch (error) {
     console.error("OpenAI prompt rewrite failed:", error);
     return null;
+  }
+}
+
+function openSceneModal() {
+  if (!sceneModal) return;
+  sceneForm?.reset();
+  sceneModal.classList.add("active");
+  setTimeout(() => sceneTitleInput?.focus(), 0);
+}
+
+function closeSceneModal() {
+  sceneModal?.classList.remove("active");
+}
+
+function activateTab(name) {
+  if (!name) return;
+  tabs.forEach((tab) => {
+    const isActive = tab.dataset.tab === name;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  tabPanels.forEach((panel) => {
+    const isActive = panel.dataset.tabPanel === name;
+    panel.classList.toggle("active", isActive);
+    panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+  });
+}
+
+function createScene({ title = "", description = "" } = {}) {
+  return {
+    id: crypto.randomUUID
+      ? crypto.randomUUID()
+      : `scene-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title,
+    description,
+  };
+}
+
+function renderScenes() {
+  if (!scenesList) return;
+  scenesList.innerHTML = "";
+  if (!scenes.length) {
+    scenesList.classList.add("empty-state");
+    scenesList.innerHTML = `<p class="empty-copy">No scenes yet. Add one to outline your story.</p>`;
+    refreshSceneSelect();
+    return;
+  }
+  scenesList.classList.remove("empty-state");
+  scenes.forEach((scene, idx) => addSceneCard(scene, idx));
+  refreshSceneSelect();
+}
+
+function addSceneCard(scene, index) {
+  if (!scenesList) return;
+  const card = document.createElement("article");
+  card.className = "scene-card";
+  card.dataset.id = scene.id;
+
+  const head = document.createElement("div");
+  head.className = "scene-head";
+
+  const titleWrap = document.createElement("div");
+  const label = document.createElement("p");
+  label.className = "eyebrow";
+  label.textContent = `Scene ${index + 1}`;
+  const title = document.createElement("h3");
+  title.className = "scene-title";
+  title.textContent = scene.title || "Untitled scene";
+  titleWrap.append(label, title);
+
+  const actions = document.createElement("div");
+  actions.className = "head-actions";
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "remove";
+  removeButton.textContent = "Remove";
+  actions.appendChild(removeButton);
+
+  head.append(titleWrap, actions);
+
+  const description = document.createElement("p");
+  description.className = "scene-description";
+  description.textContent = scene.description || "No description added.";
+
+  card.append(head, description);
+  scenesList.appendChild(card);
+
+  removeButton.addEventListener("click", () => {
+    const shouldConfirm =
+      (scene.title && scene.title.trim().length > 0) ||
+      (scene.description && scene.description.trim().length > 0);
+    if (!shouldConfirm || window.confirm("Remove this scene?")) {
+      removeScene(scene.id);
+    }
+  });
+}
+
+function removeScene(id) {
+  const idx = scenes.findIndex((scene) => scene.id === id);
+  if (idx !== -1) {
+    scenes.splice(idx, 1);
+  }
+  renderScenes();
+  saveScenes();
+}
+
+function saveScenes() {
+  try {
+    localStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(scenes));
+  } catch (error) {
+    console.error("Failed to save scenes", error);
+  }
+}
+
+function loadScenesFromStorage() {
+  try {
+    const raw = localStorage.getItem(SCENE_STORAGE_KEY);
+    if (!raw) {
+      renderScenes();
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    scenes.length = 0;
+    parsed.forEach((scene) => scenes.push(scene));
+    renderScenes();
+  } catch (error) {
+    console.error("Failed to load scenes", error);
+    renderScenes();
+  }
+}
+
+function refreshSceneSelect() {
+  if (!convertSceneSelect) return;
+  const current = convertSceneSelect.value;
+  convertSceneSelect.innerHTML = `<option value="">No scene</option>`;
+  scenes.forEach((scene) => {
+    const opt = document.createElement("option");
+    opt.value = scene.id;
+    opt.textContent = scene.title || "Untitled scene";
+    convertSceneSelect.appendChild(opt);
+  });
+  if (current) {
+    convertSceneSelect.value = current;
   }
 }
 
@@ -871,6 +1171,7 @@ function requestPanelRemoval(panel) {
 function openModal(panel) {
   convertTargetPanel = panel;
   modal?.classList.add("active");
+  refreshSceneSelect();
   modalInput.value = panel?.notes || "";
   modalInput.focus();
 }

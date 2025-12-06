@@ -67,7 +67,7 @@ function renderProjects() {
 
     card.addEventListener("click", (event) => {
       if ((event.target).closest(".delete-project")) return;
-      window.location.href = `timeline.html?project=${encodeURIComponent(project.id)}`;
+      window.location.href = `project.html?project=${encodeURIComponent(project.id)}`;
     });
 
     card.querySelector(".delete-project")?.addEventListener("click", (event) => {
@@ -86,6 +86,7 @@ function deleteProject(id) {
   const projects = loadProjects().filter((p) => p.id !== id);
   saveProjects(projects);
   localStorage.removeItem(`storyboardPanels:${id}`);
+  localStorage.removeItem(`storyboardScenes:${id}`);
 }
 
 function getThumbnail(id) {
