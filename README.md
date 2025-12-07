@@ -6,6 +6,10 @@ Transform rough sketches and images into polished storyboard frames with AI assi
 
 Sketch2Story is a storyboarding tool that lets you quickly sketch out scenes, upload reference images, and convert them into finished storyboard panels. Whether you're planning a film, animation, commercial, or any visual narrative, Sketch2Story streamlines the process of turning rough ideas into production-ready boards.
 
+## YouTube Video (click on image)
+
+[![Video Thumbnail](thumbnail.png)](https://www.youtube.com/watch?v=Gzo2tH7G7Yo)
+
 ## Features
 
 ### Sketch and Upload
