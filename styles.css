@@ -400,6 +400,24 @@ body {
   gap: 10px;
   box-shadow: 0 12px 28px -22px rgba(10, 18, 40, 0.35);
   position: relative;
+  overflow: hidden;
+}
+
+.panel-card .card-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 50;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius);
+}
+
+.panel-card .card-overlay.active {
+  display: flex;
 }
 
 .panel-overlay {
@@ -595,6 +613,55 @@ body {
 .notes-input {
   resize: none;
   min-height: 80px;
+}
+
+.panel-time-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-time-slider label {
+  min-width: 90px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0;
+}
+
+.time-slider-input {
+  flex: 1;
+  height: 6px;
+  border: none;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--line), var(--accent));
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.time-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.time-slider-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .color-picker-wrapper {

@@ -20,6 +20,7 @@
     <div class="tab-bar" role="tablist" aria-label="Project sections">
       <button class="tab active" type="button" role="tab" aria-selected="true" data-tab="panels">Panels</button>
       <button class="tab" type="button" role="tab" aria-selected="false" data-tab="scenes">Scenes</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-tab="production">Production</button>
       <button class="tab" type="button" role="tab" aria-selected="false" data-tab="export">Export</button>
     </div>
 
@@ -79,6 +80,22 @@
           </div>
           <div id="scenesList" class="scene-list empty-state">
             <p class="empty-copy">No scenes yet. Add one to outline your story.</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" data-tab-panel="production" role="tabpanel" aria-hidden="true">
+        <section class="panel-controls production-controls">
+          <div class="actions">
+            <button type="button" class="primary" id="productionBtn">Create shopping list</button>
+          </div>
+        </section>
+        <section class="timeline">
+          <div class="timeline-head">
+            <h2>Production</h2>
+          </div>
+          <div id="productionOutput" class="export-output empty-state">
+            <p class="empty-copy">No shopping list yet. Click "Create shopping list" to generate one.</p>
           </div>
         </section>
       </div>

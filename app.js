@@ -31,6 +31,8 @@ const convertSceneSelect = document.getElementById("convertSceneSelect");
 const projectTitleEl = document.getElementById("projectTitle");
 const exportVideoBtn = document.getElementById("exportVideoBtn");
 const exportOutput = document.getElementById("exportOutput");
+const productionBtn = document.getElementById("productionBtn");
+const productionOutput = document.getElementById("productionOutput");
 const editModal = document.querySelector("[data-edit-modal]");
 const editInput = document.querySelector("[data-edit-input]");
 const editCancel = document.querySelector("[data-edit-cancel]");
@@ -170,6 +172,7 @@ sceneForm?.addEventListener("submit", (event) => {
 });
 
 exportVideoBtn?.addEventListener("click", () => exportPanelsToVideo());
+productionBtn?.addEventListener("click", () => generateShoppingList());
 
 function populateSettingsModal() {
   const savedAspect = localStorage.getItem("aspectChoice") || aspect;
@@ -202,6 +205,7 @@ function createPanel(mode, extras = {}) {
     mode,
     drawing: extras.drawing || null,
     imageUrl: extras.imageUrl || null,
+    time: 3,
   };
 }
 
@@ -289,7 +293,15 @@ function addPanelCard(panel, index, total) {
             </div>`
       }
     </div>
+    <div class="panel-time-slider">
+      <label>Duration: <span data-time-display>3</span>s</label>
+      <input type="range" min="0" max="100" value="30" data-time-input class="time-slider-input">
+    </div>
     <textarea class="notes-input" placeholder="Notes, beats, or camera cues">${panel.notes}</textarea>
+    <div class="card-overlay" data-card-overlay aria-hidden="true">
+      <div class="spinner"></div>
+      <p class="overlay-text">Generating...</p>
+    </div>
   `;
 
   const removeButton = card.querySelector("[data-remove]");
@@ -303,7 +315,7 @@ function addPanelCard(panel, index, total) {
 
   const magicButton = card.querySelector("[data-magic]");
   magicButton?.addEventListener("click", () => {
-    // TODO: Implement magic wand functionality
+    enhancePanelWithAI(panel, card);
   });
 
   const editButton = card.querySelector("[data-edit]");
@@ -320,6 +332,27 @@ function addPanelCard(panel, index, total) {
     panel.notes = event.target.value;
     savePanels();
   });
+
+  const timeInput = card.querySelector("[data-time-input]");
+  const timeDisplay = card.querySelector("[data-time-display]");
+  if (timeInput && timeDisplay) {
+    const valueToTime = (value) => {
+      const normalized = value / 100;
+      return 1 + (Math.pow(normalized, 2) * 9);
+    };
+    const timeToValue = (time) => {
+      const normalized = Math.sqrt((time - 1) / 9);
+      return normalized * 100;
+    };
+    timeInput.value = timeToValue(panel.time || 3);
+    timeDisplay.textContent = (panel.time || 3).toFixed(1);
+    timeInput.addEventListener("input", (event) => {
+      const newTime = valueToTime(Number(event.target.value));
+      panel.time = newTime;
+      timeDisplay.textContent = newTime.toFixed(1);
+      savePanels();
+    });
+  }
 
   list.appendChild(card);
 
@@ -990,12 +1023,11 @@ function exportPanelsToVideo() {
     // warmup to ensure recorder is active
     await new Promise((r) => setTimeout(r, 300));
 
-    const frameDurationMs = 3000;
     const step = 1000 / fps;
 
     for (let i = 0; i < panels.length; i++) {
-      const targetTime = frameDurationMs;
-      for (let t = 0; t < targetTime; t += step) {
+      const frameDurationMs = (panels[i].time || 3) * 1000;
+      for (let t = 0; t < frameDurationMs; t += step) {
         drawFrame(images[i], panels[i].title);
         await new Promise((r) => setTimeout(r, step));
       }
@@ -1039,6 +1071,182 @@ function exportPanelsToVideo() {
       console.error(err);
       exportOutput.innerHTML = `<p class="empty-copy">Export failed. ${err.message || err}</p>`;
     });
+}
+
+function renderShoppingList(items) {
+  if (!productionOutput) return;
+  if (!items || !items.length) {
+    productionOutput.classList.add("empty-state");
+    productionOutput.innerHTML = `<p class="empty-copy">No items found for the current panels.</p>`;
+    return;
+  }
+  productionOutput.classList.remove("empty-state");
+  const listItems = items.map((item) => `<li>${item}</li>`).join("");
+  productionOutput.innerHTML = `
+    <h3>Shopping list</h3>
+    <ul class="shopping-list">
+      ${listItems}
+    </ul>
+  `;
+}
+
+function parseShoppingLines(text) {
+  return (text || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[\-\*\d\.\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+async function finalizeShoppingList(items, openaiToken) {
+  if (!items || !items.length) return [];
+  const messages = [
+    {
+      role: "system",
+      content:
+        "You merge shopping lists into a single, concise list. Keep the most specific phrasing. Merge near-duplicates (e.g., 'fake blood' and 'stage blood' => 'fake/stage blood'). Remove items that are essentially the same. Return one item per line, no bullets or commentary.",
+    },
+    {
+      role: "user",
+      content: `Deduplicate these items and return a clean list:\n${items
+        .map((item, idx) => `${idx + 1}. ${item}`)
+        .join("\n")}`,
+    },
+  ];
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiToken}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages,
+        max_completion_tokens: 200,
+        temperature: 0.2,
+      }),
+    });
+    const text = await res.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        console.warn("Failed to parse OpenAI response", err);
+      }
+    }
+    if (!res.ok) {
+      const errMsg = data?.error?.message || `OpenAI error (${res.status})`;
+      throw new Error(errMsg);
+    }
+    const content = data?.choices?.[0]?.message?.content || "";
+    const deduped = parseShoppingLines(content);
+    return deduped.length ? deduped : items;
+  } catch (error) {
+    console.error("Shopping list deduplication failed:", error);
+    return items;
+  }
+}
+
+async function generateShoppingList() {
+  if (!productionOutput) return;
+  const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
+  if (!openaiToken) {
+    console.warn("Enter your OpenAI API key in Settings before generating a shopping list.");
+    return;
+  }
+  if (!panels.length) {
+    productionOutput.classList.add("empty-state");
+    productionOutput.innerHTML = `<p class="empty-copy">Add panels before creating a shopping list.</p>`;
+    return;
+  }
+
+  productionOutput.classList.remove("empty-state");
+  productionOutput.innerHTML = `<p class="empty-copy">Generating shopping list...</p>`;
+
+  const items = new Map(); // key: normalized, value: display
+  const batchSize = 3;
+  for (let i = 0; i < panels.length; i += batchSize) {
+    const batch = panels.slice(i, i + batchSize);
+    const userContent = [
+      {
+        type: "text",
+        text: `Identify only props, wardrobe, handheld items, makeup/SFX materials, or portable equipment required to shoot these frames in real life. Exclude fixed location fixtures like furniture that belongs to the location (walls, floors, built-in cabinets, typical house chairs/tables unless the script makes them distinct props). Skip anything irrelevant to the action. Include non-obvious supporting needs (e.g., fake blood, stunt-safe knives, breakaway glass) when implied.`,
+      },
+    ];
+
+    batch.forEach((panel, idxInBatch) => {
+      const globalIndex = i + idxInBatch + 1;
+      const noteText = (panel.notes || panel.title || "").trim();
+      const label = `Panel ${globalIndex}`;
+      if (noteText) {
+        userContent.push({ type: "text", text: `${label} notes: ${noteText}` });
+      } else {
+        userContent.push({ type: "text", text: `${label}` });
+      }
+      const img = getPanelImageData(panel);
+      if (img) {
+        userContent.push({ type: "text", text: `${label} image` });
+        userContent.push({ type: "image_url", image_url: { url: img } });
+      }
+    });
+
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are a film production coordinator. Output a concise shopping list for the provided storyboard frames. Only include tangible items to procure or prepare. Do not include locations, walls, floors, built-in fixtures, or anything permanently part of the space. If an object is clearly present and is not part of the location, include it. If action implies supporting effects (fake blood, stunt-safe knife), include those. Return items as a short list, one item per line, no explanations.",
+      },
+      {
+        role: "user",
+        content: userContent,
+      },
+    ];
+
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openaiToken}`,
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages,
+          max_completion_tokens: 400,
+          temperature: 0.4,
+        }),
+      });
+      const text = await res.text();
+      let data = {};
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          console.warn("Failed to parse OpenAI response", err);
+        }
+      }
+      if (!res.ok) {
+        const errMsg = data?.error?.message || `OpenAI error (${res.status})`;
+        throw new Error(errMsg);
+      }
+      const content = data?.choices?.[0]?.message?.content || "";
+      parseShoppingLines(content).forEach((item) => {
+        const key = item.toLowerCase();
+        if (!items.has(key)) items.set(key, item);
+      });
+    } catch (error) {
+      console.error("Shopping list generation failed:", error);
+      productionOutput.classList.remove("empty-state");
+      productionOutput.innerHTML = `<p class="empty-copy">Shopping list failed: ${error.message || error}</p>`;
+      return;
+    }
+  }
+
+  const merged = [...items.values()];
+  const finalList = await finalizeShoppingList(merged, openaiToken);
+  renderShoppingList(finalList && finalList.length ? finalList : merged);
 }
 
 function getPanelImageData(panel) {
@@ -1706,6 +1914,165 @@ function closeModal() {
   modal?.classList.remove("active");
   convertTargetPanel = null;
   modalInput.value = "";
+}
+
+async function enhancePanelWithAI(panel, card) {
+  if (!panel || panel.mode !== "image" || !panel.imageUrl) {
+    console.warn("AI enhancement is only available for image panels.");
+    return;
+  }
+
+  const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
+  if (!openaiToken) {
+    alert("Please enter your OpenAI API key in settings.");
+    openaiTokenInput?.focus();
+    return;
+  }
+
+  const overlay = card?.querySelector("[data-card-overlay]");
+  if (overlay) overlay.classList.add("active");
+
+  try {
+    const mainImage = panel.imageUrl;
+    const neighbors = getNeighborImages(panel.id);
+
+    const messages = [
+      {
+        role: "system",
+        content: `You are a creative storyboard assistant. Analyze the provided image(s) and generate:
+        1. A concise panel title (2-5 words) that's just to describe what's happening quick
+        2. An optimal duration in seconds (1-10s, considering scene pacing)
+        3. Director's notes describing the visual composition, mood, camera work, and character actions in 1-2 sentences
+
+        Consider neighboring frames for context and continuity. Be specific and cinematic.`,
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Analyze this storyboard panel and suggest a title, duration, and notes. Here are the images:",
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: mainImage,
+            },
+          },
+        ],
+      },
+    ];
+
+    if (neighbors.left) {
+      messages[1].content.push({
+        type: "text",
+        text: "This is the left neighbor panel for context:",
+      });
+      messages[1].content.push({
+        type: "image_url",
+        image_url: {
+          url: neighbors.left,
+        },
+      });
+    }
+
+    if (neighbors.right) {
+      messages[1].content.push({
+        type: "text",
+        text: "This is the right neighbor panel for context:",
+      });
+      messages[1].content.push({
+        type: "image_url",
+        image_url: {
+          url: neighbors.right,
+        },
+      });
+    }
+
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "enhance_panel",
+          description: "Set the panel title, duration, and notes based on visual analysis.",
+          parameters: {
+            type: "object",
+            properties: {
+              title: {
+                type: "string",
+                description: "A concise, compelling panel title",
+              },
+              duration: {
+                type: "number",
+                description: "Optimal duration in seconds (1-10)",
+              },
+              notes: {
+                type: "string",
+                description: "Director's notes on composition, mood, and action",
+              },
+            },
+            required: ["title", "duration", "notes"],
+          },
+        },
+      },
+    ];
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4-turbo",
+        messages,
+        tools,
+        tool_choice: { type: "function", function: { name: "enhance_panel" } },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || "OpenAI API error");
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+
+    if (!toolCall || toolCall.function.name !== "enhance_panel") {
+      throw new Error("Unexpected response from AI");
+    }
+
+    const result = JSON.parse(toolCall.function.arguments);
+
+    panel.title = result.title || panel.title;
+    panel.time = Math.max(1, Math.min(10, result.duration || panel.time));
+    panel.notes = result.notes || panel.notes;
+
+    const titleInput = card.querySelector(".title-input");
+    if (titleInput) titleInput.value = panel.title;
+
+    const timeInput = card.querySelector("[data-time-input]");
+    const timeDisplay = card.querySelector("[data-time-display]");
+    if (timeInput && timeDisplay) {
+      const timeToValue = (time) => {
+        const normalized = Math.sqrt((time - 1) / 9);
+        return normalized * 100;
+      };
+      timeInput.value = timeToValue(panel.time);
+      timeDisplay.textContent = panel.time.toFixed(1);
+    }
+
+    const notesInput = card.querySelector(".notes-input");
+    if (notesInput) notesInput.value = panel.notes;
+
+    savePanels();
+  } catch (error) {
+    console.error("AI enhancement failed:", error);
+    alert(`Enhancement failed: ${error.message}`);
+  } finally {
+    if (overlay) overlay.classList.remove("active");
+  }
 }
 
 async function applyImageEdits(panel, details) {
