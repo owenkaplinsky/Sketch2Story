@@ -27,6 +27,8 @@ const exportVideoBtn = document.getElementById("exportVideoBtn");
 const exportOutput = document.getElementById("exportOutput");
 const productionBtn = document.getElementById("productionBtn");
 const productionOutput = document.getElementById("productionOutput");
+const charactersOutput = document.getElementById("charactersOutput");
+const scenesBreakdown = document.getElementById("scenesBreakdown");
 const editModal = document.querySelector("[data-edit-modal]");
 const editInput = document.querySelector("[data-edit-input]");
 const editCancel = document.querySelector("[data-edit-cancel]");
@@ -118,6 +120,19 @@ tabs.forEach((tab) => {
   tab.addEventListener("click", () => activateTab(tab.dataset.tab || "panels"));
 });
 
+// Restore active tab on page load
+function restoreTab() {
+  const storageKey = `activeTab:${PROJECT_ID}`;
+  const savedTab = localStorage.getItem(storageKey) || "panels";
+  activateTab(savedTab);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", restoreTab);
+} else {
+  restoreTab();
+}
+
 sceneModalTrigger?.addEventListener("click", () => openSceneModal());
 
 sceneModalCancel?.addEventListener("click", () => closeSceneModal());
@@ -150,7 +165,9 @@ sceneForm?.addEventListener("submit", (event) => {
 });
 
 exportVideoBtn?.addEventListener("click", () => exportPanelsToVideo());
-productionBtn?.addEventListener("click", () => generateShoppingList());
+productionBtn?.addEventListener("click", async () => {
+  await generateShoppingList();
+});
 
 const savedAspect = localStorage.getItem("aspectChoice") || aspect;
 aspectRatioInputs.forEach((input) => {
@@ -160,9 +177,6 @@ loadPanelsFromStorage();
 loadScenesFromStorage();
 refreshSceneSelect();
 setupGapControls();
-if (tabs.length) {
-  activateTab("panels");
-}
 initializeProjectTitle();
 
 function createPanel(mode, extras = {}) {
@@ -174,6 +188,7 @@ function createPanel(mode, extras = {}) {
     drawing: extras.drawing || null,
     imageUrl: extras.imageUrl || null,
     time: 3,
+    sceneId: "",
   };
 }
 
@@ -261,6 +276,10 @@ function addPanelCard(panel, index, total) {
             </div>`
       }
     </div>
+    <div class="panel-scene-select">
+      <label for="scene-select-${panel.id}">Scene</label>
+      <select id="scene-select-${panel.id}" data-scene-select class="scene-select-input"></select>
+    </div>
     <div class="panel-time-slider">
       <label>Duration: <span data-time-display>3</span>s</label>
       <input type="range" min="0" max="100" value="30" data-time-input class="time-slider-input">
@@ -300,6 +319,30 @@ function addPanelCard(panel, index, total) {
     panel.notes = event.target.value;
     savePanels();
   });
+
+  const sceneSelect = card.querySelector("[data-scene-select]");
+  if (sceneSelect) {
+    const populatePanelSceneSelect = () => {
+      const current = panel.sceneId;
+      sceneSelect.innerHTML = `<option value="">No scene</option>`;
+      if (scenes && scenes.length > 0) {
+        scenes.forEach((scene) => {
+          const opt = document.createElement("option");
+          opt.value = scene.id;
+          opt.textContent = scene.title || "Untitled scene";
+          sceneSelect.appendChild(opt);
+        });
+      }
+      if (current) {
+        sceneSelect.value = current;
+      }
+    };
+    populatePanelSceneSelect();
+    sceneSelect.addEventListener("change", (event) => {
+      panel.sceneId = event.target.value;
+      savePanels();
+    });
+  }
 
   const timeInput = card.querySelector("[data-time-input]");
   const timeDisplay = card.querySelector("[data-time-display]");
@@ -688,9 +731,9 @@ async function convertPanelToImage(panel, details) {
   }
 
   const dataUrl = canvas.toDataURL("image/png");
-  const sceneId = convertSceneSelect?.value || "";
+  const sceneId = panel.sceneId || "";
   if (!sceneId) {
-    console.warn("Select a scene before generating.");
+    alert("Please select a scene for this panel before converting.");
     return;
   }
   const scene = scenes.find((s) => s.id === sceneId);
@@ -1040,17 +1083,57 @@ function exportPanelsToVideo() {
     });
 }
 
-function renderShoppingList(items) {
+function renderShoppingList(props, clothing) {
   if (!productionOutput) return;
-  if (!items || !items.length) {
+  const hasProps = props && props.length > 0;
+  const hasClothing = clothing && clothing.length > 0;
+  
+  if (!hasProps && !hasClothing) {
     productionOutput.classList.add("empty-state");
     productionOutput.innerHTML = `<p class="empty-copy">No items found for the current panels.</p>`;
     return;
   }
+  
   productionOutput.classList.remove("empty-state");
+  
+  let html = "";
+  if (hasProps) {
+    const propItems = props.map((item) => `<li>${item}</li>`).join("");
+    html += `
+      <div class="shopping-section">
+        <h3 class="shopping-section-title">Props</h3>
+        <ul class="shopping-list">
+          ${propItems}
+        </ul>
+      </div>
+    `;
+  }
+  
+  if (hasClothing) {
+    const clothingItems = clothing.map((item) => `<li>${item}</li>`).join("");
+    html += `
+      <div class="shopping-section">
+        <h3 class="shopping-section-title">Clothing</h3>
+        <ul class="shopping-list">
+          ${clothingItems}
+        </ul>
+      </div>
+    `;
+  }
+  
+  productionOutput.innerHTML = html;
+}
+
+function renderCharactersList(items) {
+  if (!charactersOutput) return;
+  if (!items || !items.length) {
+    charactersOutput.classList.add("empty-state");
+    charactersOutput.innerHTML = `<p class="empty-copy">No characters found for the current panels.</p>`;
+    return;
+  }
+  charactersOutput.classList.remove("empty-state");
   const listItems = items.map((item) => `<li>${item}</li>`).join("");
-  productionOutput.innerHTML = `
-    <h3>Shopping list</h3>
+  charactersOutput.innerHTML = `
     <ul class="shopping-list">
       ${listItems}
     </ul>
@@ -1070,7 +1153,7 @@ async function finalizeShoppingList(items, openaiToken) {
     {
       role: "system",
       content:
-        "You merge shopping lists into a single, concise list. Keep the most specific phrasing. Merge near-duplicates (e.g., 'fake blood' and 'stage blood' => 'fake/stage blood'). Remove items that are essentially the same. Return one item per line, no bullets or commentary.",
+        "You merge shopping lists into a single, concise list by aggressively combining similar items. For example: 'Beer bottle on kitchen island', 'Beer bottle in man's hand', 'Drinking glass with beer on counter' should become 'Beer bottles' and 'Drinking glass'. Don't include location descriptors or context about where items appear - just the item name. Merge near-duplicates (e.g., 'fake blood' and 'stage blood' => 'fake/stage blood'). Remove items that are essentially the same. Return one item per line, no bullets or commentary.",
     },
     {
       role: "user",
@@ -1130,16 +1213,22 @@ async function generateShoppingList() {
   }
 
   productionOutput.classList.remove("empty-state");
-  productionOutput.innerHTML = `<p class="empty-copy">Generating shopping list...</p>`;
+  productionOutput.innerHTML = `<p class="generating-text"><span class="spinner-icon"></span> Generating production details...</p>`;
+  
+  charactersOutput.classList.remove("empty-state");
+  charactersOutput.innerHTML = `<p class="generating-text"><span class="spinner-icon"></span> Generating characters...</p>`;
 
-  const items = new Map(); // key: normalized, value: display
+  const propsItems = new Map();
+  const clothingItems = new Map();
+  const characterItems = new Map();
   const batchSize = 3;
+  
   for (let i = 0; i < panels.length; i += batchSize) {
     const batch = panels.slice(i, i + batchSize);
     const userContent = [
       {
         type: "text",
-        text: `Identify only props, wardrobe, handheld items, makeup/SFX materials, or portable equipment required to shoot these frames in real life. Exclude fixed location fixtures like furniture that belongs to the location (walls, floors, built-in cabinets, typical house chairs/tables unless the script makes them distinct props). Skip anything irrelevant to the action. Include non-obvious supporting needs (e.g., fake blood, stunt-safe knives, breakaway glass) when implied.`,
+        text: `Analyze these storyboard frames and provide two lists using the provided tool call.`,
       },
     ];
 
@@ -1162,8 +1251,11 @@ async function generateShoppingList() {
     const messages = [
       {
         role: "system",
-        content:
-          "You are a film production coordinator. Output a concise shopping list for the provided storyboard frames. Only include tangible items to procure or prepare. Do not include locations, walls, floors, built-in fixtures, or anything permanently part of the space. If an object is clearly present and is not part of the location, include it. If action implies supporting effects (fake blood, stunt-safe knife), include those. Return items as a short list, one item per line, no explanations.",
+        content: `You are a film production coordinator and casting director. Analyze the provided storyboard frames and call the analyze_production tool with three lists: 
+1. props: Only include tangible props that need to be brought to set and used by actors (e.g., a beer bottle, a knife, a phone). EXCLUDE: anything that is part of the location/set (kitchen counters, fridges, walls), background dressing items (paper towels, dish soap, decorative items), and equipment like microphones.
+2. clothing: List all clothing and wardrobe items visible on the characters (e.g., "blue jacket", "red dress", "work boots"). Include any costume pieces or special wardrobe needs.
+3. characters: List of all unique characters/actors visible in the frames. For each character, provide exactly ONE line describing their physical appearance ONLY (e.g., "Tall man with dark hair and beard", "Young woman with blonde hair"). Do NOT mention clothing, accessories, actions, emotions, or any context - ONLY physical characteristics like age, height, hair color, facial features, body type, etc.
+Return all three lists, one item per line.`,
       },
       {
         role: "user",
@@ -1181,10 +1273,39 @@ async function generateShoppingList() {
         body: JSON.stringify({
           model: OPENAI_MODEL,
           messages,
-          max_completion_tokens: 400,
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "analyze_production",
+                description: "Provide props, clothing, and characters list for production",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    props: {
+                      type: "string",
+                      description: "Props and tangible items actors will interact with, one per line"
+                    },
+                    clothing: {
+                      type: "string",
+                      description: "Clothing and wardrobe items needed, one per line"
+                    },
+                    characters: {
+                      type: "string",
+                      description: "Characters list with physical descriptions only, one per line"
+                    }
+                  },
+                  required: ["props", "clothing", "characters"]
+                }
+              }
+            }
+          ],
+          tool_choice: { type: "function", function: { name: "analyze_production" } },
+          max_completion_tokens: 800,
           temperature: 0.4,
         }),
       });
+      
       const text = await res.text();
       let data = {};
       if (text) {
@@ -1198,22 +1319,50 @@ async function generateShoppingList() {
         const errMsg = data?.error?.message || `OpenAI error (${res.status})`;
         throw new Error(errMsg);
       }
-      const content = data?.choices?.[0]?.message?.content || "";
-      parseShoppingLines(content).forEach((item) => {
-        const key = item.toLowerCase();
-        if (!items.has(key)) items.set(key, item);
-      });
+
+      const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall && toolCall.function.name === "analyze_production") {
+        const toolArgs = JSON.parse(toolCall.function.arguments);
+        const propsLines = parseShoppingLines(toolArgs.props);
+        const clothingLines = parseShoppingLines(toolArgs.clothing);
+        const characterLines = parseShoppingLines(toolArgs.characters);
+        
+        propsLines.forEach((item) => {
+          const key = item.toLowerCase();
+          if (!propsItems.has(key)) propsItems.set(key, item);
+        });
+        
+        clothingLines.forEach((item) => {
+          const key = item.toLowerCase();
+          if (!clothingItems.has(key)) clothingItems.set(key, item);
+        });
+        
+        characterLines.forEach((item) => {
+          const key = item.toLowerCase();
+          if (!characterItems.has(key)) characterItems.set(key, item);
+        });
+      }
     } catch (error) {
-      console.error("Shopping list generation failed:", error);
+      console.error("Production analysis failed:", error);
       productionOutput.classList.remove("empty-state");
-      productionOutput.innerHTML = `<p class="empty-copy">Shopping list failed: ${error.message || error}</p>`;
+      productionOutput.innerHTML = `<p class="empty-copy">Production analysis failed: ${error.message || error}</p>`;
       return;
     }
   }
 
-  const merged = [...items.values()];
-  const finalList = await finalizeShoppingList(merged, openaiToken);
-  renderShoppingList(finalList && finalList.length ? finalList : merged);
+  const mergedProps = [...propsItems.values()];
+  const mergedClothing = [...clothingItems.values()];
+  const mergedCharacters = [...characterItems.values()];
+  
+  const finalProps = await finalizeShoppingList(mergedProps, openaiToken);
+  const finalClothing = await finalizeShoppingList(mergedClothing, openaiToken);
+  const finalCharacters = await finalizeShoppingList(mergedCharacters, openaiToken);
+  
+  renderShoppingList(
+    finalProps && finalProps.length ? finalProps : mergedProps,
+    finalClothing && finalClothing.length ? finalClothing : mergedClothing
+  );
+  renderCharactersList(finalCharacters && finalCharacters.length ? finalCharacters : mergedCharacters);
 }
 
 function getPanelImageData(panel) {
@@ -1431,6 +1580,7 @@ function activateTab(name) {
     panel.classList.toggle("active", isActive);
     panel.setAttribute("aria-hidden", isActive ? "false" : "true");
   });
+  localStorage.setItem(`activeTab:${PROJECT_ID}`, name);
 }
 
 function createScene({ title = "", description = "" } = {}) {
@@ -1455,6 +1605,7 @@ function renderScenes() {
   scenesList.classList.remove("empty-state");
   scenes.forEach((scene, idx) => addSceneCard(scene, idx));
   refreshSceneSelect();
+  updateScenesBreakdown();
 }
 
 function addSceneCard(scene, index) {
@@ -1537,18 +1688,59 @@ function loadScenesFromStorage() {
 }
 
 function refreshSceneSelect() {
-  if (!convertSceneSelect) return;
-  const current = convertSceneSelect.value;
-  convertSceneSelect.innerHTML = `<option value="">No scene</option>`;
-  scenes.forEach((scene) => {
-    const opt = document.createElement("option");
-    opt.value = scene.id;
-    opt.textContent = scene.title || "Untitled scene";
-    convertSceneSelect.appendChild(opt);
+  const panelSceneSelects = document.querySelectorAll("[data-scene-select]");
+  panelSceneSelects.forEach((select) => {
+    const panelId = select.id.replace("scene-select-", "");
+    const panel = panels.find((p) => p.id === panelId);
+    if (!panel) return;
+    const current = panel.sceneId;
+    select.innerHTML = `<option value="">No scene</option>`;
+    if (scenes && scenes.length > 0) {
+      scenes.forEach((scene) => {
+        const opt = document.createElement("option");
+        opt.value = scene.id;
+        opt.textContent = scene.title || "Untitled scene";
+        select.appendChild(opt);
+      });
+    }
+    if (current) {
+      select.value = current;
+    }
   });
-  if (current) {
-    convertSceneSelect.value = current;
+}
+
+function updateScenesBreakdown() {
+  if (!scenesBreakdown) return;
+
+  if (!scenes.length || !panels.length) {
+    scenesBreakdown.classList.add("empty-state");
+    scenesBreakdown.innerHTML = `<p class="empty-copy">No scenes or panels yet.</p>`;
+    return;
   }
+
+  scenesBreakdown.classList.remove("empty-state");
+  scenesBreakdown.innerHTML = "";
+
+  const sceneMap = new Map();
+  scenes.forEach((scene) => {
+    sceneMap.set(scene.id, { scene, count: 0 });
+  });
+
+  panels.forEach((panel) => {
+    if (panel.sceneId && sceneMap.has(panel.sceneId)) {
+      sceneMap.get(panel.sceneId).count++;
+    }
+  });
+
+  sceneMap.forEach(({ scene, count }) => {
+    const card = document.createElement("div");
+    card.className = "scene-breakdown-item";
+    card.innerHTML = `
+      <div class="breakdown-title">${scene.title || "Untitled scene"}</div>
+      <div class="breakdown-count">${count} panel${count !== 1 ? "s" : ""}</div>
+    `;
+    scenesBreakdown.appendChild(card);
+  });
 }
 
 function savePanels() {

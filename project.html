@@ -18,14 +18,14 @@
     </header>
 
     <div class="tab-bar" role="tablist" aria-label="Project sections">
-      <button class="tab active" type="button" role="tab" aria-selected="true" data-tab="panels">Panels</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-tab="panels">Panels</button>
       <button class="tab" type="button" role="tab" aria-selected="false" data-tab="scenes">Scenes</button>
       <button class="tab" type="button" role="tab" aria-selected="false" data-tab="production">Production</button>
       <button class="tab" type="button" role="tab" aria-selected="false" data-tab="export">Export</button>
     </div>
 
     <div class="tab-panels">
-      <div class="tab-panel active" data-tab-panel="panels" role="tabpanel">
+      <div class="tab-panel" data-tab-panel="panels" role="tabpanel" aria-hidden="true">
         <section class="panel-controls">
           <form id="panelForm" class="panel-form">
             <div class="actions-row">
@@ -51,9 +51,6 @@
         </section>
 
         <section class="timeline">
-          <div class="timeline-head">
-            <h2>Panels</h2>
-          </div>
           <div id="panels" class="panel-list empty-state">
             <p class="empty-copy">No panels yet. Add one to start sketching.</p>
           </div>
@@ -67,9 +64,6 @@
           </div>
         </section>
         <section class="timeline">
-          <div class="timeline-head">
-            <h2>Export</h2>
-          </div>
           <div id="exportOutput" class="export-output empty-state">
             <p class="empty-copy">No export yet. Click "Export to video" to render.</p>
           </div>
@@ -84,9 +78,6 @@
         </section>
 
         <section class="timeline">
-          <div class="timeline-head">
-            <h2>Scenes</h2>
-          </div>
           <div id="scenesList" class="scene-list empty-state">
             <p class="empty-copy">No scenes yet. Add one to outline your story.</p>
           </div>
@@ -96,15 +87,37 @@
       <div class="tab-panel" data-tab-panel="production" role="tabpanel" aria-hidden="true">
         <section class="panel-controls production-controls">
           <div class="actions">
-            <button type="button" class="primary" id="productionBtn">Create shopping list</button>
+            <button type="button" class="primary" id="productionBtn">Refresh</button>
           </div>
         </section>
         <section class="timeline">
           <div class="timeline-head">
-            <h2>Production</h2>
+            <h2>Shopping List</h2>
           </div>
-          <div id="productionOutput" class="export-output empty-state">
-            <p class="empty-copy">No shopping list yet. Click "Create shopping list" to generate one.</p>
+          <div class="production-wrapper">
+            <div id="productionOutput" class="export-output empty-state">
+              <p class="empty-copy">Click "Refresh" to load production details.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="timeline">
+          <div class="timeline-head">
+            <h2>Characters</h2>
+          </div>
+          <div class="production-wrapper">
+            <div id="charactersOutput" class="export-output empty-state">
+              <p class="empty-copy">Click "Refresh" to load characters.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="timeline">
+          <div class="timeline-head">
+            <h2>Scenes</h2>
+          </div>
+          <div id="scenesBreakdown" class="scenes-breakdown empty-state">
+            <p class="empty-copy">No scenes or panels yet.</p>
           </div>
         </section>
       </div>
@@ -117,12 +130,6 @@
       <p class="modal__lede">
         Your sketch defines the layout and composition of the shot, but it doesn't specify visual details such as character appearance, clothing, lighting, or setting. To generate an accurate storyboard panel, please add a few descriptive details below.
       </p>
-      <label class="field">
-        <span>Scene</span>
-        <select id="convertSceneSelect" required>
-          <option value="">No scene</option>
-        </select>
-      </label>
       <textarea class="modal__textarea" data-prompt-input placeholder="Describe characters, lighting, setting, mood, camera intent"></textarea>
       <div class="modal__actions">
         <button type="button" class="secondary" data-modal-cancel>Cancel</button>
