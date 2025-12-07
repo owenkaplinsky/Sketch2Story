@@ -7,11 +7,23 @@ const newProjectName = document.getElementById("newProjectName");
 const newProjectSave = document.querySelector("[data-new-project-save]");
 const newProjectCancel = document.querySelector("[data-new-project-cancel]");
 
+const homeSettingsTrigger = document.getElementById("homeSettingsTrigger");
+const apiSettingsModal = document.querySelector("[data-api-settings-modal]");
+const homeApiTokenInput = document.getElementById("homeApiTokenInput");
+const homeOpenaiTokenInput = document.getElementById("homeOpenaiTokenInput");
+const apiSettingsSave = document.querySelector("[data-api-settings-save]");
+const apiSettingsCancel = document.querySelector("[data-api-settings-cancel]");
+
 newProjectBtn?.addEventListener("click", openProjectModal);
 newProjectCancel?.addEventListener("click", closeProjectModal);
 newProjectSave?.addEventListener("click", createProject);
 
+homeSettingsTrigger?.addEventListener("click", openApiSettingsModal);
+apiSettingsCancel?.addEventListener("click", closeApiSettingsModal);
+apiSettingsSave?.addEventListener("click", saveApiSettings);
+
 renderProjects();
+loadApiSettings();
 
 function openProjectModal() {
   newProjectModal?.classList.add("active");
@@ -116,4 +128,32 @@ function loadProjects() {
 
 function saveProjects(list) {
   localStorage.setItem(PROJECTS_KEY, JSON.stringify(list));
+}
+
+function openApiSettingsModal() {
+  apiSettingsModal?.classList.add("active");
+  loadApiSettings();
+}
+
+function closeApiSettingsModal() {
+  apiSettingsModal?.classList.remove("active");
+}
+
+function loadApiSettings() {
+  if (homeApiTokenInput) {
+    homeApiTokenInput.value = localStorage.getItem("briaApiToken") || "";
+  }
+  if (homeOpenaiTokenInput) {
+    homeOpenaiTokenInput.value = localStorage.getItem("openaiApiToken") || "";
+  }
+}
+
+function saveApiSettings() {
+  const briaToken = homeApiTokenInput?.value?.trim() || "";
+  const openaiToken = homeOpenaiTokenInput?.value?.trim() || "";
+
+  localStorage.setItem("briaApiToken", briaToken);
+  localStorage.setItem("openaiApiToken", openaiToken);
+
+  closeApiSettingsModal();
 }

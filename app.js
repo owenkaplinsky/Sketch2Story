@@ -6,17 +6,11 @@ const form = document.getElementById("panelForm");
 const list = document.getElementById("panels");
 const uploadTrigger = document.getElementById("uploadTrigger");
 const uploadInput = document.getElementById("uploadInput");
-const settingsTrigger = document.getElementById("settingsTrigger");
+const aspectRatioInputs = document.querySelectorAll("input[name='aspectRatio']");
 const modal = document.querySelector("[data-modal]");
 const modalInput = document.querySelector("[data-prompt-input]");
 const modalSubmit = document.querySelector("[data-modal-submit]");
 const modalCancel = document.querySelector("[data-modal-cancel]");
-const settingsModal = document.querySelector("[data-settings-modal]");
-const settingsSave = document.querySelector("[data-settings-save]");
-const settingsCancel = document.querySelector("[data-settings-cancel]");
-const settingsAspectInputs = document.querySelectorAll("input[name='settingsAspect']");
-const apiTokenInput = document.getElementById("apiTokenInput");
-const openaiTokenInput = document.getElementById("openaiTokenInput");
 const tabs = document.querySelectorAll("[data-tab]");
 const tabPanels = document.querySelectorAll("[data-tab-panel]");
 const sceneForm = document.getElementById("sceneForm");
@@ -109,31 +103,15 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-settingsTrigger?.addEventListener("click", () => {
-  populateSettingsModal();
-  settingsModal?.classList.add("active");
-});
-
-settingsCancel?.addEventListener("click", () => {
-  settingsModal?.classList.remove("active");
-});
-
-settingsSave?.addEventListener("click", () => {
-  const selectedAspect = [...settingsAspectInputs].find((input) => input.checked)?.value || "16:9";
-  aspect = selectedAspect;
-  document.body.dataset.aspect = aspect;
-  document.documentElement.style.setProperty("--canvas-aspect", aspect.replace(":", " / "));
-  localStorage.setItem("aspectChoice", aspect);
-  resizeAllCanvases();
-
-  const briaTokenVal = apiTokenInput?.value || "";
-  localStorage.setItem("briaApiToken", briaTokenVal);
-
-  const openaiTokenVal = openaiTokenInput?.value || "";
-  localStorage.setItem("openaiApiToken", openaiTokenVal);
-
-  settingsModal?.classList.remove("active");
-  savePanels();
+aspectRatioInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    aspect = input.value;
+    document.body.dataset.aspect = aspect;
+    document.documentElement.style.setProperty("--canvas-aspect", aspect.replace(":", " / "));
+    localStorage.setItem("aspectChoice", aspect);
+    resizeAllCanvases();
+    savePanels();
+  });
 });
 
 tabs.forEach((tab) => {
@@ -174,20 +152,10 @@ sceneForm?.addEventListener("submit", (event) => {
 exportVideoBtn?.addEventListener("click", () => exportPanelsToVideo());
 productionBtn?.addEventListener("click", () => generateShoppingList());
 
-function populateSettingsModal() {
-  const savedAspect = localStorage.getItem("aspectChoice") || aspect;
-  settingsAspectInputs.forEach((input) => {
-    input.checked = input.value === savedAspect;
-  });
-  if (apiTokenInput) {
-    apiTokenInput.value = localStorage.getItem("briaApiToken") || apiTokenInput.value || "";
-  }
-  if (openaiTokenInput) {
-    openaiTokenInput.value = localStorage.getItem("openaiApiToken") || openaiTokenInput.value || "";
-  }
-}
-
-populateSettingsModal();
+const savedAspect = localStorage.getItem("aspectChoice") || aspect;
+aspectRatioInputs.forEach((input) => {
+  input.checked = input.value === savedAspect;
+});
 loadPanelsFromStorage();
 loadScenesFromStorage();
 refreshSceneSelect();
@@ -708,15 +676,14 @@ async function convertPanelToImage(panel, details) {
     return;
   }
 
-  const apiToken = (apiTokenInput?.value || localStorage.getItem("briaApiToken") || "").trim();
+  const apiToken = localStorage.getItem("briaApiToken")?.trim() || "";
   if (!apiToken) {
-    console.warn("Enter your Bria api_token before converting.");
-    apiTokenInput?.focus();
+    console.warn("Enter your Bria API token in API Keys settings before converting.");
     return;
   }
-  const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
+  const openaiToken = localStorage.getItem("openaiApiToken")?.trim() || "";
   if (!openaiToken) {
-    console.warn("Enter your OpenAI API key in Settings before converting.");
+    console.warn("Enter your OpenAI API key in API Keys settings before converting.");
     return;
   }
 
@@ -1151,9 +1118,9 @@ async function finalizeShoppingList(items, openaiToken) {
 
 async function generateShoppingList() {
   if (!productionOutput) return;
-  const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
+  const openaiToken = localStorage.getItem("openaiApiToken")?.trim() || "";
   if (!openaiToken) {
-    console.warn("Enter your OpenAI API key in Settings before generating a shopping list.");
+    console.warn("Enter your OpenAI API key in API Keys settings before generating a shopping list.");
     return;
   }
   if (!panels.length) {
@@ -1635,15 +1602,14 @@ async function generateInbetweenPanel(atIndex) {
     return;
   }
 
-  const apiToken = (apiTokenInput?.value || localStorage.getItem("briaApiToken") || "").trim();
+  const apiToken = localStorage.getItem("briaApiToken")?.trim() || "";
   if (!apiToken) {
-    console.warn("Enter your Bria api_token before generating.");
-    apiTokenInput?.focus();
+    console.warn("Enter your Bria API token in API Keys settings before generating.");
     return;
   }
-  const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
+  const openaiToken = localStorage.getItem("openaiApiToken")?.trim() || "";
   if (!openaiToken) {
-    console.warn("Enter your OpenAI API key in Settings before generating.");
+    console.warn("Enter your OpenAI API key in API Keys settings before generating.");
     return;
   }
 
@@ -1922,10 +1888,9 @@ async function enhancePanelWithAI(panel, card) {
     return;
   }
 
-  const openaiToken = (openaiTokenInput?.value || localStorage.getItem("openaiApiToken") || "").trim();
+  const openaiToken = localStorage.getItem("openaiApiToken")?.trim() || "";
   if (!openaiToken) {
-    alert("Please enter your OpenAI API key in settings.");
-    openaiTokenInput?.focus();
+    alert("Please enter your OpenAI API key in API Keys settings.");
     return;
   }
 
@@ -2080,10 +2045,9 @@ async function applyImageEdits(panel, details) {
     console.warn("Edits are only available for image panels.");
     return;
   }
-  const apiToken = (apiTokenInput?.value || localStorage.getItem("briaApiToken") || "").trim();
+  const apiToken = localStorage.getItem("briaApiToken")?.trim() || "";
   if (!apiToken) {
-    console.warn("Enter your Bria api_token before editing.");
-    apiTokenInput?.focus();
+    console.warn("Enter your Bria API token in API Keys settings before editing.");
     return;
   }
 

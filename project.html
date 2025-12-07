@@ -35,7 +35,16 @@
                 <input type="file" id="uploadInput" accept="image/*" hidden>
               </div>
               <div class="actions-right">
-                <button type="button" class="secondary" id="settingsTrigger">Settings</button>
+                <div class="aspect-toggle" role="group" aria-label="Panel aspect ratio">
+                  <label>
+                    <input type="radio" name="aspectRatio" value="16:9" checked>
+                    <span>16:9</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="aspectRatio" value="9:16">
+                    <span>9:16</span>
+                  </label>
+                </div>
               </div>
             </div>
           </form>
@@ -118,43 +127,6 @@
       <div class="modal__actions">
         <button type="button" class="secondary" data-modal-cancel>Cancel</button>
         <button type="button" class="primary" data-modal-submit>Generate</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" data-settings-modal>
-    <div class="modal__dialog">
-      <h3>Settings</h3>
-      <div class="settings-grid">
-        <div>
-          <p class="eyebrow">Panel aspect</p>
-          <div class="aspect-toggle" role="group" aria-label="Panel aspect ratio">
-            <label>
-              <input type="radio" name="settingsAspect" value="16:9" checked>
-              <span>16:9</span>
-            </label>
-            <label>
-              <input type="radio" name="settingsAspect" value="9:16">
-              <span>9:16</span>
-            </label>
-          </div>
-        </div>
-        <div class="field">
-          <label>
-            <span>Bria api_token</span>
-            <input id="apiTokenInput" type="password" placeholder="Enter Bria api_token" autocomplete="off">
-          </label>
-        </div>
-        <div class="field">
-          <label>
-            <span>OpenAI API key</span>
-            <input id="openaiTokenInput" type="password" placeholder="Enter OpenAI API key" autocomplete="off">
-          </label>
-        </div>
-      </div>
-      <div class="modal__actions">
-        <button type="button" class="secondary" data-settings-cancel>Cancel</button>
-        <button type="button" class="primary" data-settings-save>Save</button>
       </div>
     </div>
   </div>

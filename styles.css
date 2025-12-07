@@ -507,6 +507,16 @@ body {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+body[data-aspect="9:16"] .head-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  max-width: 192px;
+  justify-content: end;
 }
 
 .insert-btn {
@@ -961,7 +971,7 @@ body[data-aspect="9:16"] .panel-list:not(.empty-state) {
   padding: 12px 14px;
   box-shadow: 0 12px 28px -22px rgba(10, 18, 40, 0.35);
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;

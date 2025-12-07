@@ -20,6 +20,7 @@
       <div class="home-bar-left">
         <button class="primary" id="newProjectBtn">New project</button>
       </div>
+      <button type="button" class="secondary" id="homeSettingsTrigger">API Keys</button>
     </div>
 
     <main>
@@ -51,6 +52,34 @@
       </div>
     </div>
   </div>
+
+  <div class="modal" data-api-settings-modal>
+    <div class="modal__dialog">
+      <h3>API Keys</h3>
+      <p class="modal__lede">
+        Add your API keys to enable AI features. Keys are stored locally on your device.
+      </p>
+      <div class="settings-grid">
+        <div class="field">
+          <label>
+            <span>Bria API Token</span>
+            <input id="homeApiTokenInput" type="password" placeholder="Enter Bria API token" autocomplete="off">
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span>OpenAI API Key</span>
+            <input id="homeOpenaiTokenInput" type="password" placeholder="Enter OpenAI API key" autocomplete="off">
+          </label>
+        </div>
+      </div>
+      <div class="modal__actions">
+        <button type="button" class="secondary" data-api-settings-cancel>Cancel</button>
+        <button type="button" class="primary" data-api-settings-save>Save</button>
+      </div>
+    </div>
+  </div>
+
   <script src="home.js"></script>
 </body>
 </html>
