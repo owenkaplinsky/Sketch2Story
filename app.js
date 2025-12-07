@@ -210,6 +210,7 @@ sceneForm?.addEventListener("submit", (event) => {
 exportVideoBtn?.addEventListener("click", () => exportPanelsToVideo());
 productionBtn?.addEventListener("click", async () => {
   await generateShoppingList();
+  updateScenesBreakdown();
 });
 
 const savedAspect = localStorage.getItem("aspectChoice") || aspect;
@@ -1629,12 +1630,12 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
 async function composeInbetweenPrompt(leftImage, rightImage, openaiKey) {
   if (!leftImage || !rightImage) return null;
   const bridgePrompt =
-    "Describe a single storyboard frame that naturally happens between the left frame (earlier) and the right frame (later). Advance the timeline while keeping continuity of characters, props, lighting, and camera position.";
+    "Describe a single storyboard frame that naturally happens between the left frame (earlier) and the right frame (later). For example, if a person is at one place in a room in one frame, and another in the other frame, the prompt you make should be of the person walking from point A to B. Or if someone is not holding anything, then is, it could be them picking it up. The prompt you write should be the direct middle of the two frames in time - it shouldn't be a near-duplicate of the existing frames. Advance the timeline while keeping continuity of characters, props, lighting, and camera position.";
   const messages = [
     {
       role: "system",
       content:
-        "You create in-between storyboard frames using two reference frames from the same sequence. Be concrete about spatial layout, character motion, and camera placement. Choose one coherent, confident interpretation without hedging.",
+        "You create in-between storyboard frames using two reference frames from the same sequence. Be concrete about spatial layout, character motion, and camera placement, and angles. Choose one coherent, confident interpretation without hedging. You must include info such as clothing, gender, age, etc. every single detail that is relevant.",
     },
     {
       role: "user",
@@ -2288,7 +2289,7 @@ async function enhancePanelWithAI(panel, card) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4-turbo",
+        model: "gpt-5.1",
         messages,
         tools,
         tool_choice: { type: "function", function: { name: "enhance_panel" } },
