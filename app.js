@@ -42,6 +42,9 @@ document.body.dataset.aspect = aspect;
 document.documentElement.style.setProperty("--canvas-aspect", aspect.replace(":", " / "));
 const STORAGE_KEY = `storyboardPanels:${PROJECT_ID}`;
 const SCENE_STORAGE_KEY = `storyboardScenes:${PROJECT_ID}`;
+const SHOPPING_KEY = `storyboardShopping:${PROJECT_ID}`;
+const CHARACTERS_KEY = `storyboardCharacters:${PROJECT_ID}`;
+const VIDEO_KEY = `storyboardVideo:${PROJECT_ID}`;
 
 let dragState = {
   draggingId: null,
@@ -127,10 +130,50 @@ function restoreTab() {
   activateTab(savedTab);
 }
 
+function restoreProductionData() {
+  // Restore shopping list
+  const shoppingData = loadShoppingList();
+  if (shoppingData?.props || shoppingData?.clothing) {
+    renderShoppingList(shoppingData.props || [], shoppingData.clothing || []);
+  }
+  
+  // Restore characters list
+  const charactersData = loadCharactersList();
+  if (charactersData && charactersData.length > 0) {
+    renderCharactersList(charactersData);
+  }
+  
+  // Restore video
+  const videoData = loadVideo();
+  if (videoData && exportOutput) {
+    exportOutput.innerHTML = "";
+    const video = document.createElement("video");
+    video.controls = true;
+    video.src = videoData;
+    video.playsInline = true;
+    exportOutput.appendChild(video);
+    const playPromise = video.play();
+    if (playPromise?.catch) {
+      playPromise.catch(() => {
+        const link = document.createElement("a");
+        link.href = videoData;
+        link.textContent = "Download video";
+        link.download = "export.webm";
+        exportOutput.appendChild(document.createElement("br"));
+        exportOutput.appendChild(link);
+      });
+    }
+  }
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", restoreTab);
+  document.addEventListener("DOMContentLoaded", () => {
+    restoreTab();
+    restoreProductionData();
+  });
 } else {
   restoreTab();
+  restoreProductionData();
 }
 
 sceneModalTrigger?.addEventListener("click", () => openSceneModal());
@@ -1059,6 +1102,15 @@ function exportPanelsToVideo() {
       }
       const blob = new Blob(chunks, { type: mimeType || "video/webm" });
       const url = URL.createObjectURL(blob);
+      
+      // Convert blob to data URL for localStorage
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        saveVideo(dataUrl);
+      };
+      reader.readAsDataURL(blob);
+      
       exportOutput.innerHTML = "";
       const video = document.createElement("video");
       video.controls = true;
@@ -1122,6 +1174,7 @@ function renderShoppingList(props, clothing) {
   }
   
   productionOutput.innerHTML = html;
+  saveShoppingList(props, clothing);
 }
 
 function renderCharactersList(items) {
@@ -1138,6 +1191,60 @@ function renderCharactersList(items) {
       ${listItems}
     </ul>
   `;
+  saveCharactersList(items);
+}
+
+function saveShoppingList(props, clothing) {
+  try {
+    localStorage.setItem(SHOPPING_KEY, JSON.stringify({ props, clothing }));
+  } catch (err) {
+    console.error("Failed to save shopping list", err);
+  }
+}
+
+function loadShoppingList() {
+  try {
+    const data = localStorage.getItem(SHOPPING_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch (err) {
+    console.error("Failed to load shopping list", err);
+    return null;
+  }
+}
+
+function saveCharactersList(items) {
+  try {
+    localStorage.setItem(CHARACTERS_KEY, JSON.stringify(items));
+  } catch (err) {
+    console.error("Failed to save characters list", err);
+  }
+}
+
+function loadCharactersList() {
+  try {
+    const data = localStorage.getItem(CHARACTERS_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch (err) {
+    console.error("Failed to load characters list", err);
+    return null;
+  }
+}
+
+function saveVideo(videoDataUrl) {
+  try {
+    localStorage.setItem(VIDEO_KEY, videoDataUrl);
+  } catch (err) {
+    console.error("Failed to save video", err);
+  }
+}
+
+function loadVideo() {
+  try {
+    return localStorage.getItem(VIDEO_KEY);
+  } catch (err) {
+    console.error("Failed to load video", err);
+    return null;
+  }
 }
 
 function parseShoppingLines(text) {
@@ -1254,7 +1361,7 @@ async function generateShoppingList() {
         content: `You are a film production coordinator and casting director. Analyze the provided storyboard frames and call the analyze_production tool with three lists: 
 1. props: Only include tangible props that need to be brought to set and used by actors (e.g., a beer bottle, a knife, a phone). EXCLUDE: anything that is part of the location/set (kitchen counters, fridges, walls), background dressing items (paper towels, dish soap, decorative items), and equipment like microphones.
 2. clothing: List all clothing and wardrobe items visible on the characters (e.g., "blue jacket", "red dress", "work boots"). Include any costume pieces or special wardrobe needs.
-3. characters: List of all unique characters/actors visible in the frames. For each character, provide exactly ONE line describing their physical appearance ONLY (e.g., "Tall man with dark hair and beard", "Young woman with blonde hair"). Do NOT mention clothing, accessories, actions, emotions, or any context - ONLY physical characteristics like age, height, hair color, facial features, body type, etc.
+3. characters: List of all unique characters/actors visible in the frames. For each character, provide exactly ONE detailed line describing their physical appearance and key identifying features. Include: estimated age or age range (e.g., "30s", "mid-50s"), height estimate (tall, average, short), hair color and style, notable facial features (beard, glasses, scars, birthmarks, etc.), body type, skin tone, and any distinctive marks. Example format: "Man in his 40s, tall with salt-and-pepper hair, full beard, athletic build, dark complexion". Do NOT mention clothing, accessories, actions, emotions, or any context - ONLY physical characteristics.
 Return all three lists, one item per line.`,
       },
       {

@@ -249,7 +249,9 @@ body {
 }
 
 .field textarea {
-  resize: vertical;
+  resize: none;
+  width: 100%;
+  min-height: 100px;
 }
 
 .field input:focus,
