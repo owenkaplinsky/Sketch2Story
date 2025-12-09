@@ -173,6 +173,7 @@ function restoreProductionData() {
   // Restore video
   const videoData = loadVideo();
   if (videoData && exportOutput) {
+    exportOutput.classList.remove("empty-state");
     exportOutput.innerHTML = "";
     const video = document.createElement("video");
     video.controls = true;
@@ -181,14 +182,7 @@ function restoreProductionData() {
     exportOutput.appendChild(video);
     const playPromise = video.play();
     if (playPromise?.catch) {
-      playPromise.catch(() => {
-        const link = document.createElement("a");
-        link.href = videoData;
-        link.textContent = "Download video";
-        link.download = "export.webm";
-        exportOutput.appendChild(document.createElement("br"));
-        exportOutput.appendChild(link);
-      });
+      playPromise.catch(() => {});
     }
   }
 }
@@ -387,7 +381,7 @@ function addPanelCard(panel, index, total) {
   }
 
   const card = document.createElement("article");
-  card.className = "panel-card";
+  card.className = `panel-card panel-card--${panel.mode}`;
   card.dataset.id = panel.id;
 
   card.innerHTML = `
@@ -1193,18 +1187,31 @@ function exportPanelsToVideo() {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, baseWidth, baseHeight);
     if (img) {
-      const scale = Math.min(baseWidth / img.width, baseHeight / img.height);
-      const dw = img.width * scale;
-      const dh = img.height * scale;
-      const dx = (baseWidth - dw) / 2;
-      const dy = (baseHeight - dh) / 2;
-      ctx.drawImage(img, dx, dy, dw, dh);
+      if (aspect === "9:16") {
+        // For vertical: use "cover" mode - scale to fill height, crop width
+        const scale = Math.max(baseWidth / img.width, baseHeight / img.height);
+        const dw = img.width * scale;
+        const dh = img.height * scale;
+        const dx = (baseWidth - dw) / 2;
+        const dy = (baseHeight - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+      } else {
+        // For horizontal: use "contain" mode - fit entire image
+        const scale = Math.min(baseWidth / img.width, baseHeight / img.height);
+        const dw = img.width * scale;
+        const dh = img.height * scale;
+        const dx = (baseWidth - dw) / 2;
+        const dy = (baseHeight - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+      }
     }
     const label = title || "Untitled panel";
-    ctx.font = "30px Inter, Segoe UI, sans-serif";
+    const isVertical = aspect === "9:16";
+    const fontSize = isVertical ? 60 : 30;
+    const paddingX = isVertical ? 28 : 14;
+    const paddingY = isVertical ? 20 : 10;
+    ctx.font = `${fontSize}px Inter, Segoe UI, sans-serif`;
     ctx.textBaseline = "top";
-    const paddingX = 14;
-    const paddingY = 10;
     const textMetrics = ctx.measureText(label);
     const textHeight = textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent;
     const bgWidth = textMetrics.width + paddingX * 2;
@@ -1286,14 +1293,7 @@ function exportPanelsToVideo() {
       exportOutput.appendChild(video);
       const playPromise = video.play();
       if (playPromise?.catch) {
-        playPromise.catch(() => {
-          const link = document.createElement("a");
-          link.href = url;
-          link.textContent = "Download video";
-          link.download = "export.webm";
-          exportOutput.appendChild(document.createElement("br"));
-          exportOutput.appendChild(link);
-        });
+        playPromise.catch(() => {});
       }
     })
     .catch((err) => {

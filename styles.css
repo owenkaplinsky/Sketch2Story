@@ -313,8 +313,10 @@ body {
 }
 
 .export-output video {
-  width: 100%;
-  max-width: 960px;
+  max-width: 100%;
+  max-height: 65vh;
+  width: auto;
+  height: auto;
   border-radius: 12px;
   border: 1px solid var(--line);
   box-shadow: 0 12px 28px -24px rgba(10, 18, 40, 0.35);
@@ -336,14 +338,18 @@ body {
 }
 
 .export-output {
-  display: grid;
-  place-items: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
   width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
 }
 
 .export-output:has(.generating-text) {
-  place-items: center;
+  align-items: center;
+  justify-content: center;
 }
 
 .scene-form-grid {
@@ -584,6 +590,34 @@ body {
   justify-content: flex-end;
 }
 
+.panel-card--draw .head-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "convert convert"
+    "duplicate remove";
+  width: 100%;
+  max-width: 220px;
+  justify-items: stretch;
+  align-items: stretch;
+}
+
+.panel-card--draw .head-actions [data-convert] {
+  grid-area: convert;
+  width: 100%;
+}
+
+.panel-card--draw .head-actions [data-duplicate] {
+  grid-area: duplicate;
+  width: 100%;
+}
+
+.panel-card--draw .head-actions [data-remove] {
+  grid-area: remove;
+  width: 100%;
+  justify-self: end;
+}
+
 body[data-aspect="9:16"] .head-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -750,7 +784,7 @@ body[data-aspect="9:16"] .head-actions {
 }
 
 .time-slider-input {
-  flex: 1;
+  flex: 0 0 50%;
   height: 6px;
   border: none;
   border-radius: 3px;
