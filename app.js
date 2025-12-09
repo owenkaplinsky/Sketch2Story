@@ -43,6 +43,15 @@ const tutorialPrev = document.getElementById("tutorialPrev");
 const tutorialDone = document.getElementById("tutorialDone");
 const tutorialProgress = document.getElementById("tutorialProgress");
 
+const clarificationModal = document.querySelector("[data-clarification-modal]");
+const clarificationInput = document.querySelector("[data-clarification-input]");
+const clarificationSubmit = document.querySelector("[data-clarification-submit]");
+const clarificationCancel = document.querySelector("[data-clarification-cancel]");
+
+let pendingConvertPanel = null;
+let pendingConvertDetails = null;
+let pendingRewrittenPrompt = null;
+
 let currentTutorialStep = 0;
 const totalTutorialSteps = 5;
 
@@ -259,6 +268,75 @@ tutorialStepsModal?.addEventListener("click", (event) => {
   }
 });
 
+clarificationCancel?.addEventListener("click", () => {
+  clarificationModal?.classList.remove("active");
+  pendingConvertPanel = null;
+  pendingConvertDetails = null;
+  pendingRewrittenPrompt = null;
+});
+
+clarificationModal?.addEventListener("click", (event) => {
+  if (event.target === clarificationModal) {
+    clarificationCancel?.click();
+  }
+});
+
+clarificationSubmit?.addEventListener("click", async () => {
+  const additionalInfo = clarificationInput?.value?.trim() || "";
+  if (!additionalInfo) {
+    alert("Please provide details about what you want.");
+    return;
+  }
+  if (!pendingConvertPanel) return;
+
+  clarificationModal?.classList.remove("active");
+  const panel = pendingConvertPanel;
+  const openaiToken = localStorage.getItem("openaiApiToken")?.trim() || "";
+  
+  // Get the sketch images for reference (locations, layout only)
+  const card = list?.querySelector(`[data-id="${panel.id}"]`);
+  const canvas = card?.querySelector("canvas");
+  const dataUrl = canvas?.toDataURL("image/png") || "";
+  
+  const neighbors = getNeighborImages(panel.id);
+  const images = [{ label: "sketch", url: dataUrl }];
+  if (neighbors.left) images.push({ label: "left", url: neighbors.left });
+  if (neighbors.right) images.push({ label: "right", url: neighbors.right });
+
+  // Show overlay before generating
+  const overlay = card?.querySelector(".panel-overlay");
+  setOverlayState(overlay, true, "Generating...", panel.id);
+
+  try {
+    // User clarification is the primary input; sketch is just for reference (locations, layout)
+    const clarificationPrompt = `${additionalInfo}\n\n(Reference sketch shows layout and positioning - prioritize user description above sketch details)`;
+    
+    console.log("Rewriting clarification prompt:", clarificationPrompt);
+    console.log("Using sketch for reference only");
+    const rewriteResult = await rewritePrompt(clarificationPrompt, images, openaiToken);
+    console.log("Rewrite result:", rewriteResult);
+    
+    if (!rewriteResult?.prompt) {
+      console.warn("Prompt rewrite failed for clarification; using clarification directly.");
+      await completeImageGeneration(panel, additionalInfo, null);
+    } else {
+      const selectedImageLabel = rewriteResult.image || null;
+      let selectedImageData = null;
+      if (selectedImageLabel === "left") selectedImageData = neighbors.left;
+      if (selectedImageLabel === "right") selectedImageData = neighbors.right;
+      console.log("Using rewritten prompt:", rewriteResult.prompt);
+      await completeImageGeneration(panel, rewriteResult.prompt, selectedImageData);
+    }
+  } catch (error) {
+    console.error("Clarification generation error:", error);
+    setOverlayState(null, false, "Working...", panel.id);
+  }
+
+  pendingConvertPanel = null;
+  pendingConvertDetails = null;
+  pendingRewrittenPrompt = null;
+});
+
 sceneForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const title = (sceneTitleInput?.value || "").trim();
@@ -404,7 +482,9 @@ function addPanelCard(panel, index, total) {
   removeButton?.addEventListener("click", () => requestPanelRemoval(panel));
 
   const convertButton = card.querySelector("[data-convert]");
-  convertButton?.addEventListener("click", () => openModal(panel));
+  convertButton?.addEventListener("click", async () => {
+    await convertPanelToImage(panel, "");
+  });
 
   const duplicateButton = card.querySelector("[data-duplicate]");
   duplicateButton?.addEventListener("click", () => duplicatePanel(panel));
@@ -841,11 +921,7 @@ async function convertPanelToImage(panel, details) {
 
   const dataUrl = canvas.toDataURL("image/png");
   const sceneId = panel.sceneId || "";
-  if (!sceneId) {
-    alert("Please select a scene for this panel before converting.");
-    return;
-  }
-  const scene = scenes.find((s) => s.id === sceneId);
+  const scene = sceneId ? scenes.find((s) => s.id === sceneId) : null;
   const sceneContext = scene
     ? `Scene title: ${scene.title || "Untitled scene"}; Description: ${scene.description || "No description provided."}`
     : "";
@@ -872,6 +948,29 @@ async function convertPanelToImage(panel, details) {
   if (selectedImageLabel === "right") selectedImageData = neighbors.right;
 
   const finalPrompt = promptResult.prompt;
+
+  // Check if sketch is clear enough or ask for clarification
+  const isClear = await checkSketchClarity(finalPrompt, images, openaiToken);
+  
+  if (!isClear) {
+    // Store pending state and show clarification modal
+    pendingConvertPanel = panel;
+    pendingConvertDetails = details;
+    pendingRewrittenPrompt = finalPrompt;
+    setOverlayState(overlay, false, "Working...", panel.id);
+    
+    clarificationInput.value = "";
+    clarificationModal?.classList.add("active");
+    clarificationInput?.focus();
+    return;
+  }
+
+  // If clear, proceed with generation
+  await completeImageGeneration(panel, finalPrompt, selectedImageData);
+}
+
+async function completeImageGeneration(panel, finalPrompt, selectedImageData) {
+  const apiToken = localStorage.getItem("briaApiToken")?.trim() || "";
 
   try {
     const response = await fetch(BRIA_ENDPOINT, {
@@ -903,9 +1002,9 @@ async function convertPanelToImage(panel, details) {
       panel.mode = "image";
       panel.imageUrl = generated;
       panel.drawing = null;
-      rerenderPanels();
       savePanels();
-      setOverlayState(overlay, false, "Working...", panel.id);
+      rerenderPanels();
+      setOverlayState(null, false, "Working...", panel.id);
       return;
     }
 
@@ -917,18 +1016,17 @@ async function convertPanelToImage(panel, details) {
         panel.mode = "image";
         panel.imageUrl = finalUrl;
         panel.drawing = null;
-        rerenderPanels();
         savePanels();
-        setOverlayState(overlay, false, "Working...", panel.id);
+        rerenderPanels();
+        setOverlayState(null, false, "Working...", panel.id);
         return;
       }
       throw new Error("Polling completed without an image_url.");
     }
 
   } catch (error) {
-    console.error(error);
-  } finally {
-    setOverlayState(overlay, false, "Working...", panel.id);
+    console.error("Image generation error:", error instanceof Error ? error.message : String(error));
+    setOverlayState(null, false, "Working...", panel.id);
   }
 }
 
@@ -1660,6 +1758,7 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
       1. Treat all drawn elements as real objects. Do not mention sketches, drawings, or uncertainty. State what each object IS, not what it "might be."
       2. Convert all visual cues into concrete facts: exact positions (left, right, center, above, below), distances, overlaps, relative sizes, heights, and orientations. Always specify angles and directions (facing left, leaning forward, tilted upward, etc.).
       3. When an element is ambiguous, choose a single, reasonable real-world interpretation and state it confidently as fact. Never use phrases like "possibly," "interpreted as," "appears to be," or "could be."
+      4. Everything must be described as realistic and photorealistic. No stylization, no cartoons, no illustrations. Describe things as they would appear in a real photograph or realistic video.
       5. Incorporate user-provided text and scene metadata only for semantic detail. Never allow user text to override the spatial arrangement seen in the image.
       6. The final result must be concise, direct, and fully grounded in visual reality. Describe the final scene as if it truly exists, based entirely on the visual layout.
       
@@ -1690,6 +1789,112 @@ async function rewritePrompt(userPrompt, images, openaiKey) {
     });
 
   return composePromptWithTool(messages, userPrompt, openaiKey, "OpenAI prompt rewrite failed:");
+}
+
+async function checkSketchClarity(finalPrompt, images, openaiKey) {
+  const messages = [
+    {
+      role: "system",
+      content: `You are evaluating whether a sketch is 100% clear and unambiguous. Given a prompt and sketch image(s), determine if there is complete clarity about what should be generated, or if there is any ambiguity or possibility for misunderstanding (even 0.1%).
+      
+      Consider: Are all objects clearly identifiable? Are positions and relationships clear? Could any element be interpreted differently? Is the intent 100% obvious?`,
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `Given this prompt and sketch, is it 100% obvious and unambiguous what should be generated? Or is there even 1% chance of misunderstanding?
+
+Prompt: "${finalPrompt}"
+
+Sketch image(s):`,
+        },
+      ],
+    },
+  ];
+
+  (images || [])
+    .filter((img) => !!img?.url)
+    .forEach((img) => {
+      messages[1].content.push({
+        type: "text",
+        text: `${img.label || "sketch"}.png`,
+      });
+      messages[1].content.push({
+        type: "image_url",
+        image_url: { url: img.url },
+      });
+    });
+
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "evaluate_clarity",
+        description:
+          "Evaluate whether the sketch is 100% clear and unambiguous. Return true if completely clear, false if there is any ambiguity.",
+        parameters: {
+          type: "object",
+          properties: {
+            is_clear: { type: "boolean", description: "True if 100% unambiguous, false if there is any ambiguity." },
+          },
+          required: ["is_clear"],
+        },
+      },
+    },
+  ];
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages,
+        tools,
+        tool_choice: "required",
+        max_completion_tokens: 100,
+      }),
+    });
+
+    const text = await res.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        console.warn("Failed to parse OpenAI clarity check response", err);
+        return false;
+      }
+    }
+
+    if (!res.ok) {
+      const errMsg = data?.error?.message || `OpenAI error (${res.status})`;
+      console.error("Clarity check error:", errMsg);
+      return false;
+    }
+
+    const message = data?.choices?.[0]?.message;
+    const toolCall = message?.tool_calls?.[0];
+    if (toolCall?.function?.name === "evaluate_clarity") {
+      try {
+        const args = JSON.parse(toolCall.function.arguments || "{}");
+        return args.is_clear === true;
+      } catch (err) {
+        console.warn("Failed to parse clarity check arguments", err);
+        return false;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Clarity check failed:", error);
+    return false;
+  }
 }
 
 async function composeInbetweenPrompt(leftImage, rightImage, openaiKey) {
