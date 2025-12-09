@@ -80,13 +80,19 @@ uploadTrigger?.addEventListener("click", () => {
 uploadInput?.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
-  const imageUrl = URL.createObjectURL(file);
-  const panel = createPanel("image", { imageUrl });
-  panels.push(panel);
-  addPanelCard(panel);
-  renumberPanels();
-  uploadInput.value = "";
-  savePanels();
+  
+  // Convert file to data URL so it persists after page refresh
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const imageUrl = e.target?.result;
+    const panel = createPanel("image", { imageUrl });
+    panels.push(panel);
+    addPanelCard(panel);
+    renumberPanels();
+    uploadInput.value = "";
+    savePanels();
+  };
+  reader.readAsDataURL(file);
 });
 
 modalCancel?.addEventListener("click", closeModal);
