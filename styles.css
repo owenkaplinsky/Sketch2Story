@@ -1000,11 +1000,15 @@ body[data-aspect="9:16"] .panel-list:not(.empty-state) {
   padding: 18px;
   max-width: 520px;
   width: min(520px, 100%);
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   box-shadow: 0 20px 60px -28px rgba(6, 10, 30, 0.55);
 }
 
 .modal__dialog h3 {
-  margin: 0 0 8px;
+  margin: 0 0 12px;
 }
 
 .modal__lede {
@@ -1028,8 +1032,19 @@ body[data-aspect="9:16"] .panel-list:not(.empty-state) {
 .modal__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 25px;
   margin-top: 14px;
+}
+
+.tutorial-steps-dialog {
+  max-width: 720px !important;
+  width: min(720px, 100%) !important;
+  padding: 21.6px !important;
+  min-height: auto;
+}
+
+.tutorial-step {
+  flex: 1;
 }
 
 .gap-controls {

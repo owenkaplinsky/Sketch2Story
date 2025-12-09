@@ -174,6 +174,67 @@
     </div>
   </div>
 
+  <div class="modal" data-tutorial-modal>
+    <div class="modal__dialog">
+      <div>
+        <h3>Welcome to Sketch2Story</h3>
+        <p class="modal__lede">
+          Would you like a quick tutorial on how to use this project?
+        </p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; justify-content: flex-end;">
+        <input type="checkbox" id="tutorialNeverCheckbox" data-tutorial-never style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); margin: 0; flex-shrink: 0;">
+        <label for="tutorialNeverCheckbox" style="margin: 0; font-size: 14px; color: var(--muted); white-space: nowrap; cursor: pointer; margin-left: -4px;">Don't show this again</label>
+        <button type="button" class="secondary" data-tutorial-skip>Skip for now</button>
+        <button type="button" class="primary" data-tutorial-start>Start tutorial</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" data-tutorial-steps-modal>
+    <div class="modal__dialog tutorial-steps-dialog">
+      <div class="tutorial-step" data-step="0" style="display: none;">
+        <h3>Step 1: Create a Scene</h3>
+        <p class="modal__lede">Scenes help you organize your storyboard. Create your first scene in the Scenes tab.</p>
+        <img src="tutorial/scene.gif" alt="Create a Scene" style="width: 100%; border-radius: 8px; margin: 16px 0;">
+      </div>
+      <div class="tutorial-step" data-step="1" style="display: none;">
+        <h3>Step 2: Draw in a Panel</h3>
+        <p class="modal__lede">Click "Add panel" to create a new panel, and draw your storyboard frames directly in the canvas.</p>
+        <div style="overflow: hidden; border-radius: 8px; margin: 16px 0;">
+          <img src="tutorial/draw.gif" alt="Draw in a Panel" style="width: 100%; display: block; margin-top: -4px;">
+        </div>
+      </div>
+      <div class="tutorial-step" data-step="2" style="display: none;">
+        <h3>Step 3: Enhance with Sparkles</h3>
+        <p class="modal__lede">Click the sparkles button to enhance your panel using AI.</p>
+        <div style="overflow: hidden; border-radius: 8px; margin: 16px 0;">
+          <img src="tutorial/enhance.gif" alt="Enhance with AI" style="width: 100%; height: 360px; object-fit: contain; display: block; margin-right: -3px; padding-right: 3px;">
+        </div>
+      </div>
+      <div class="tutorial-step" data-step="3" style="display: none;">
+        <h3>Step 4: Edit with AI</h3>
+        <p class="modal__lede">Edit your image by saying what you want to change or enhance.</p>
+        <div style="overflow: hidden; border-radius: 8px; margin: 16px 0;">
+          <img src="tutorial/edit.gif" alt="Edit with AI" style="width: 100%; height: 360px; object-fit: contain; display: block; margin-right: -3px; padding-right: 3px;">
+        </div>
+      </div>
+      <div class="tutorial-step" data-step="4" style="display: none;">
+        <h3>Step 5: Generate In-Between Frames</h3>
+        <p class="modal__lede">Click the "+" button between panels to auto-generate smooth transitions between your frames.</p>
+        <img src="tutorial/in-between.gif" alt="Generate In-Between Frames" style="width: 100%; border-radius: 8px; margin: 16px 0;">
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 16px; gap: 12px;">
+        <span id="tutorialProgress" style="font-size: 13px; color: var(--muted);">Step 1 of 5</span>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="secondary" id="tutorialPrev" style="display: none;">Previous</button>
+          <button type="button" class="primary" id="tutorialNext">Next</button>
+          <button type="button" class="secondary" id="tutorialDone" style="display: none;">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

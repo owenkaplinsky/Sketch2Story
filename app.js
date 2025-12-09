@@ -33,6 +33,18 @@ const editModal = document.querySelector("[data-edit-modal]");
 const editInput = document.querySelector("[data-edit-input]");
 const editCancel = document.querySelector("[data-edit-cancel]");
 const editSubmit = document.querySelector("[data-edit-submit]");
+const tutorialModal = document.querySelector("[data-tutorial-modal]");
+const tutorialStart = document.querySelector("[data-tutorial-start]");
+const tutorialSkip = document.querySelector("[data-tutorial-skip]");
+const tutorialNeverCheckbox = document.getElementById("tutorialNeverCheckbox");
+const tutorialStepsModal = document.querySelector("[data-tutorial-steps-modal]");
+const tutorialNext = document.getElementById("tutorialNext");
+const tutorialPrev = document.getElementById("tutorialPrev");
+const tutorialDone = document.getElementById("tutorialDone");
+const tutorialProgress = document.getElementById("tutorialProgress");
+
+let currentTutorialStep = 0;
+const totalTutorialSteps = 5;
 
 const DEFAULT_COLOR = "#3c7ecf";
 const OPENAI_MODEL = "gpt-5.1";
@@ -201,6 +213,52 @@ editSubmit?.addEventListener("click", async () => {
   await applyImageEdits(target, details);
 });
 
+tutorialSkip?.addEventListener("click", () => {
+  tutorialModal?.classList.remove("active");
+});
+tutorialModal?.addEventListener("click", (event) => {
+  if (event.target === tutorialModal) {
+    tutorialModal?.classList.remove("active");
+  }
+});
+tutorialStart?.addEventListener("click", () => {
+  tutorialModal?.classList.remove("active");
+  startTutorial();
+});
+tutorialNeverCheckbox?.addEventListener("change", (event) => {
+  if (event.target.checked) {
+    localStorage.setItem("tutorialSeen", "true");
+  } else {
+    localStorage.removeItem("tutorialSeen");
+  }
+});
+
+tutorialNext?.addEventListener("click", () => {
+  if (currentTutorialStep < totalTutorialSteps - 1) {
+    currentTutorialStep++;
+    updateTutorialStep();
+  } else {
+    closeTutorialSteps();
+  }
+});
+
+tutorialPrev?.addEventListener("click", () => {
+  if (currentTutorialStep > 0) {
+    currentTutorialStep--;
+    updateTutorialStep();
+  }
+});
+
+tutorialDone?.addEventListener("click", () => {
+  closeTutorialSteps();
+});
+
+tutorialStepsModal?.addEventListener("click", (event) => {
+  if (event.target === tutorialStepsModal) {
+    closeTutorialSteps();
+  }
+});
+
 sceneForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const title = (sceneTitleInput?.value || "").trim();
@@ -228,6 +286,7 @@ loadScenesFromStorage();
 refreshSceneSelect();
 setupGapControls();
 initializeProjectTitle();
+checkTutorialStatus();
 
 function createPanel(mode, extras = {}) {
   return {
@@ -2428,3 +2487,48 @@ list?.addEventListener("dragover", (event) => {
 });
 
 list?.addEventListener("drop", handleDrop);
+
+function checkTutorialStatus() {
+  const tutorialSeen = localStorage.getItem("tutorialSeen") === "true";
+  if (!tutorialSeen) {
+    tutorialModal?.classList.add("active");
+  }
+}
+
+function startTutorial() {
+  currentTutorialStep = 0;
+  tutorialStepsModal?.classList.add("active");
+  updateTutorialStep();
+}
+
+function updateTutorialStep() {
+  // Hide all steps
+  const steps = tutorialStepsModal?.querySelectorAll(".tutorial-step");
+  steps?.forEach((step) => {
+    step.style.display = "none";
+  });
+
+  // Show current step
+  const currentStep = tutorialStepsModal?.querySelector(`[data-step="${currentTutorialStep}"]`);
+  if (currentStep) {
+    currentStep.style.display = "block";
+  }
+
+  // Update buttons and progress
+  const isLastStep = currentTutorialStep === totalTutorialSteps - 1;
+  const isFirstStep = currentTutorialStep === 0;
+
+  if (tutorialPrev) tutorialPrev.style.display = isFirstStep ? "none" : "block";
+  if (tutorialNext) tutorialNext.style.display = isLastStep ? "none" : "block";
+  if (tutorialDone) tutorialDone.style.display = isLastStep ? "block" : "none";
+
+  // Update progress text
+  if (tutorialProgress) {
+    tutorialProgress.textContent = `Step ${currentTutorialStep + 1} of ${totalTutorialSteps}`;
+  }
+}
+
+function closeTutorialSteps() {
+  tutorialStepsModal?.classList.remove("active");
+  currentTutorialStep = 0;
+}
