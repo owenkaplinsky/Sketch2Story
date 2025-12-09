@@ -773,14 +773,17 @@ function resizeCanvas(canvas, ctx, state, shouldClear = false) {
 }
 
 function resizeAllCanvases() {
+  const panelsTab = document.querySelector('[data-tab-panel="panels"]');
+  if (panelsTab && !panelsTab.classList.contains("active")) return;
+
   const cards = list?.querySelectorAll(".panel-card");
   cards?.forEach((card) => {
     const canvas = card.querySelector("canvas");
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const brush = Number(card.querySelector("[data-brush]")?.value || 4);
-    const color =
-      card.querySelector(".color-swatch[style*='box-shadow']")?.dataset.color || colorChoices[0];
+    const colorToggle = card.querySelector("[data-color-toggle]");
+    const color = colorToggle?.style.background || DEFAULT_COLOR;
     const panelId = card.dataset.id;
     const panel = panels.find((p) => p.id === panelId);
     if (panel?.mode !== "draw") return;
@@ -1959,6 +1962,9 @@ function activateTab(name) {
     panel.setAttribute("aria-hidden", isActive ? "false" : "true");
   });
   localStorage.setItem(`activeTab:${PROJECT_ID}`, name);
+  if (name === "panels") {
+    requestAnimationFrame(() => resizeAllCanvases());
+  }
 }
 
 function createScene({ title = "", description = "" } = {}) {
