@@ -14,6 +14,10 @@ const homeOpenaiTokenInput = document.getElementById("homeOpenaiTokenInput");
 const apiSettingsSave = document.querySelector("[data-api-settings-save]");
 const apiSettingsCancel = document.querySelector("[data-api-settings-cancel]");
 
+const missingApiModal = document.querySelector("[data-missing-api-modal]");
+const missingApiCancel = document.querySelector("[data-missing-api-cancel]");
+const missingApiSettings = document.querySelector("[data-missing-api-settings]");
+
 newProjectBtn?.addEventListener("click", openProjectModal);
 newProjectCancel?.addEventListener("click", closeProjectModal);
 newProjectSave?.addEventListener("click", createProject);
@@ -22,10 +26,24 @@ homeSettingsTrigger?.addEventListener("click", openApiSettingsModal);
 apiSettingsCancel?.addEventListener("click", closeApiSettingsModal);
 apiSettingsSave?.addEventListener("click", saveApiSettings);
 
+missingApiCancel?.addEventListener("click", closeMissingApiModal);
+missingApiSettings?.addEventListener("click", () => {
+  closeMissingApiModal();
+  openApiSettingsModal();
+});
+
 renderProjects();
 loadApiSettings();
 
 function openProjectModal() {
+  const briaToken = localStorage.getItem("briaApiToken")?.trim() || "";
+  const openaiToken = localStorage.getItem("openaiApiToken")?.trim() || "";
+  
+  if (!briaToken || !openaiToken) {
+    openMissingApiModal();
+    return;
+  }
+  
   newProjectModal?.classList.add("active");
   if (newProjectName) {
     newProjectName.value = "";
@@ -35,6 +53,14 @@ function openProjectModal() {
 
 function closeProjectModal() {
   newProjectModal?.classList.remove("active");
+}
+
+function openMissingApiModal() {
+  missingApiModal?.classList.add("active");
+}
+
+function closeMissingApiModal() {
+  missingApiModal?.classList.remove("active");
 }
 
 function createProject() {
